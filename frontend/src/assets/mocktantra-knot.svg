@@ -1,0 +1,33 @@
+<svg width="220" height="220" viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="58" y1="32" x2="136" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE680"/>
+      <stop offset="0.45" stop-color="#FFB43B"/>
+      <stop offset="1" stop-color="#FF7A00"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="154" y1="42" x2="100" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE88A"/>
+      <stop offset="0.5" stop-color="#FFBA47"/>
+      <stop offset="1" stop-color="#FF850F"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="66" y1="178" x2="120" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF5A1F"/>
+      <stop offset="0.5" stop-color="#FF7C3F"/>
+      <stop offset="1" stop-color="#FFB37B"/>
+    </linearGradient>
+    <linearGradient id="g4" x1="150" y1="170" x2="88" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFC79D"/>
+      <stop offset="0.5" stop-color="#FF9682"/>
+      <stop offset="1" stop-color="#E85C69"/>
+    </linearGradient>
+    <filter id="shadow" x="18" y="18" width="184" height="184" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#E39A43" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <path d="M108 40C128 40 149 47 161 62C170 74 172 89 167 101C160 118 143 126 127 126C109 126 92 118 81 108C71 99 61 86 61 70C61 52 82 40 108 40Z" stroke="url(#g1)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M162 108C162 128 155 149 140 161C128 170 113 172 101 167C84 160 76 143 76 127C76 109 84 92 94 81C103 71 116 61 132 61C150 61 162 82 162 108Z" stroke="url(#g2)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M112 180C92 180 71 173 59 158C50 146 48 131 53 119C60 102 77 94 93 94C111 94 128 102 139 112C149 121 159 134 159 150C159 168 138 180 112 180Z" stroke="url(#g3)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M58 112C58 92 65 71 80 59C92 50 107 48 119 53C136 60 144 77 144 93C144 111 136 128 126 139C117 149 104 159 88 159C70 159 58 138 58 112Z" stroke="url(#g4)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
