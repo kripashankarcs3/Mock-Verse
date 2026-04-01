@@ -1,6 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Clock, CheckCircle2, Zap, Award, Code, FileText, Users } from "lucide-react";
 import CustomCalendar from "../components/CustomCalendar";
+
+const CODING_TIMER_STORAGE_KEY = "mockverse-total-coding-timer";
+const INITIAL_CODING_SECONDS = 10 * 60 * 60;
 
 const mainSections = [
   {
@@ -34,13 +37,86 @@ const mainSections = [
 ];
 
 export default function Dashboard({ onOpenPractice, darkMode }) {
+  const [codingSeconds, setCodingSeconds] = useState(() => {
+    if (typeof window === "undefined") return INITIAL_CODING_SECONDS;
+
+    try {
+      const stored = window.localStorage.getItem(CODING_TIMER_STORAGE_KEY);
+      if (!stored) return INITIAL_CODING_SECONDS;
+
+      const parsed = JSON.parse(stored);
+      const baseSeconds =
+        typeof parsed.accumulatedSeconds === "number"
+          ? parsed.accumulatedSeconds
+          : INITIAL_CODING_SECONDS;
+      const lastUpdatedAt =
+        typeof parsed.lastUpdatedAt === "number" ? parsed.lastUpdatedAt : Date.now();
+
+      return baseSeconds + Math.max(0, Math.floor((Date.now() - lastUpdatedAt) / 1000));
+    } catch (err) {
+      console.error("Failed to load coding timer:", err);
+      return INITIAL_CODING_SECONDS;
+    }
+  });
+
+  useEffect(() => {
+    const tick = () => {
+      try {
+        const stored = window.localStorage.getItem(CODING_TIMER_STORAGE_KEY);
+        const now = Date.now();
+
+        if (!stored) {
+          const initialState = {
+            accumulatedSeconds: INITIAL_CODING_SECONDS,
+            lastUpdatedAt: now,
+          };
+          window.localStorage.setItem(CODING_TIMER_STORAGE_KEY, JSON.stringify(initialState));
+          setCodingSeconds(INITIAL_CODING_SECONDS);
+          return;
+        }
+
+        const parsed = JSON.parse(stored);
+        const accumulatedSeconds =
+          typeof parsed.accumulatedSeconds === "number"
+            ? parsed.accumulatedSeconds
+            : INITIAL_CODING_SECONDS;
+        const lastUpdatedAt =
+          typeof parsed.lastUpdatedAt === "number" ? parsed.lastUpdatedAt : now;
+        const elapsedSeconds = Math.max(0, Math.floor((now - lastUpdatedAt) / 1000));
+        const nextSeconds = accumulatedSeconds + elapsedSeconds;
+
+        window.localStorage.setItem(
+          CODING_TIMER_STORAGE_KEY,
+          JSON.stringify({
+            accumulatedSeconds: nextSeconds,
+            lastUpdatedAt: now,
+          }),
+        );
+
+        setCodingSeconds(nextSeconds);
+      } catch (err) {
+        console.error("Failed to update coding timer:", err);
+      }
+    };
+
+    tick();
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const formatCodingTime = (totalSeconds) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-3 md:p-4 space-y-4">
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         <div className="flex-1 w-full space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              { label: "Total Coding", val: "42h 15m", icon: <Clock size={16} className="text-blue-500" /> },
+              { label: "Total Coding", val: formatCodingTime(codingSeconds), icon: <Clock size={16} className="text-blue-500" /> },
               { label: "Solved", val: "128", icon: <CheckCircle2 size={16} className="text-emerald-500" /> },
               { label: "Streak", val: "12 Days", icon: <Zap size={16} className="text-orange-500" /> },
               { label: "Rank", val: "#1,204", icon: <Award size={16} className="text-purple-500" /> },

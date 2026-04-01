@@ -86,12 +86,29 @@ const codeTokens = (line) => {
   const preprocessor = /(#include[^\n]*)/g;
 
   let html = line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  html = html.replace(preprocessor, '<span class="code-preprocessor">$1</span>');
-  html = html.replace(strings, '<span class="code-string">"$1"</span>');
-  html = html.replace(comments, '<span class="code-comment">$1</span>');
-  html = html.replace(keywords, '<span class="code-keyword">$1</span>');
-  html = html.replace(types, '<span class="code-type">$1</span>');
-  html = html.replace(numbers, '<span class="code-number">$1</span>');
+
+  const segments = [];
+  let segmentIndex = 0;
+  const mark = (regex, wrap) => {
+    html = html.replace(regex, (match) => {
+      const token = `__TOKEN_${segmentIndex}__`;
+      segments.push(wrap(match));
+      segmentIndex += 1;
+      return token;
+    });
+  };
+
+  mark(preprocessor, (match) => `<span class="code-preprocessor">${match}</span>`);
+  mark(strings, (match) => `<span class="code-string">${match}</span>`);
+  mark(comments, (match) => `<span class="code-comment">${match}</span>`);
+  mark(keywords, (match) => `<span class="code-keyword">${match}</span>`);
+  mark(types, (match) => `<span class="code-type">${match}</span>`);
+  mark(numbers, (match) => `<span class="code-number">${match}</span>`);
+
+  segments.forEach((segment, index) => {
+    html = html.replace(`__TOKEN_${index}__`, segment);
+  });
+
   return html;
 };
 
@@ -127,6 +144,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
   const editorRef = useRef(null);
   const highlightRef = useRef(null);
   const containerRef = useRef(null);
+  const uiFontFamily = '"Aptos", "Segoe UI Variable", "Segoe UI", "Trebuchet MS", sans-serif';
 
   const codeLines = code.split("\n");
 
@@ -373,12 +391,12 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
       onMouseMove={handleMouseMove}
     >
       <style>{`
-        .code-keyword { color: #569cd6; font-weight: 500; }
-        .code-string { color: #ce9178; }
-        .code-comment { color: #6a9955; font-style: italic; }
-        .code-number { color: #b5cea8; }
-        .code-preprocessor { color: #c586c0; }
-        .code-type { color: #4ec9b0; }
+        .code-keyword { color: #8b1db0; font-weight: 500; }
+        .code-string { color: #df5a1c; }
+        .code-comment { color: #98a2b3; font-style: italic; }
+        .code-number { color: #2f855a; }
+        .code-preprocessor { color: #e85d04; font-weight: 500; }
+        .code-type { color: #059669; }
         .code-highlight { position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:auto;white-space:pre;font-family:monospace;font-size:13px;line-height:21px;padding:8px 8px 8px 0;margin:0; }
         .code-textarea { position:relative;z-index:2;background:transparent;color:transparent;white-space:pre;font-family:monospace;font-size:13px;line-height:21px;resize:none;outline:none;border:none;width:100%;height:100%;overflow:auto;padding:8px 8px 8px 0; }
         .code-textarea.dark { caret-color:#fff; }
@@ -420,20 +438,20 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
         </div>
       </aside>
 
-      <div className="flex flex-1 overflow-hidden" ref={containerRef}>
+      <div className="flex flex-1 overflow-hidden border-t border-white" ref={containerRef} style={{ fontFamily: uiFontFamily }}>
         <div
-          className={`bg-slate-50 border-r flex flex-col overflow-hidden rounded-t-2xl relative transition-[width] dark:bg-black dark:border-slate-800/80 ${problemCollapsed ? "pointer-events-none" : ""
+          className={`bg-[#D9DDE1] border-r border-[#D9DDE1] flex flex-col overflow-hidden rounded-t-lg relative transition-[width] dark:bg-black dark:border-slate-800/80 ${problemCollapsed ? "pointer-events-none" : ""
             }`}
           style={{
             width: problemCollapsed ? 0 : `${splitPercent}%`,
             minWidth: problemCollapsed ? 0 : "300px",
           }}
         >
-          <div className="h-10 bg-white/80 text-slate-900 flex items-center px-4 justify-between rounded-t-xl sticky top-0 z-20 border-b backdrop-blur-md border-slate-200 shadow-sm dark:bg-black/80 dark:text-slate-200 dark:border-slate-800 transition-colors">
+          <div className="mt-px h-10 bg-[#2A3439] text-slate-100 flex items-center px-4 justify-between rounded-t-lg sticky top-0 z-20 border-b backdrop-blur-md border-[#2A3439] shadow-sm dark:bg-black/80 dark:text-slate-200 dark:border-slate-800 transition-colors">
             <div className="flex items-center gap-3">
               <button
                 onClick={onBack}
-                className="p-1.5 rounded-full hover:bg-gray-200 text-slate-600 dark:hover:bg-slate-700 dark:text-slate-200"
+                className="p-1.5 rounded-full hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200"
                 title="Back to Dashboard"
               >
                 <ArrowLeft size={16} />
@@ -443,22 +461,22 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                   type="text"
                   value={problemData.title}
                   onChange={(e) => setProblemData({ ...problemData, title: e.target.value })}
-                  className="bg-transparent border-b border-blue-500 outline-none text-sm font-bold w-48"
+                  className="bg-transparent border-b border-slate-300 outline-none text-sm font-bold tracking-[0.01em] text-slate-100 w-48"
                   placeholder="Enter Question Title"
                 />
               ) : (
-                <span className="font-bold text-sm">{problemData.num}. {problemData.title}</span>
+                <span className="text-[15px] font-bold tracking-[0.01em] text-slate-100">{problemData.num}. {problemData.title}</span>
               )}
             </div>
-            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-200">
-              <span className="px-3 py-0.5 rounded-full bg-emerald-500 text-emerald-900 font-semibold text-xs">
+            <div className="flex items-center gap-3 text-slate-200 dark:text-slate-200">
+              <span className="px-3 py-0.5 rounded-full bg-emerald-400 text-emerald-950 font-semibold text-xs">
                 {formatTime(timerSeconds)}
               </span>
               <CaseUpper size={16} className="opacity-80" />
               {isEditing && (
                 <button
                   onClick={handleBulkImport}
-                  className="p-1 rounded hover:bg-emerald-100 text-emerald-600 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors flex items-center gap-1 text-[10px] font-bold px-2"
+                  className="p-1 rounded hover:bg-white/10 text-emerald-300 dark:hover:bg-emerald-900/40 dark:text-emerald-400 transition-colors flex items-center gap-1 text-[10px] font-bold px-2"
                   title="Paste Problem from Clipboard and Auto-Parse"
                 >
                   <ClipboardPaste size={14} /> Auto-Parse
@@ -466,7 +484,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               )}
               <button
                 onClick={() => setIsEditing(!isEditing)}
-                className={`p-1 rounded transition-colors ${isEditing ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'hover:bg-gray-200 text-slate-600 dark:hover:bg-slate-700 dark:text-slate-200'}`}
+                className={`p-1 rounded transition-colors ${isEditing ? 'bg-white/15 text-blue-200 dark:bg-blue-900/40 dark:text-blue-400' : 'hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200'}`}
                 title={isEditing ? "Save Changes" : "Edit Problem"}
               >
                 {isEditing ? <CheckCircle2 size={16} /> : <Edit3 size={16} />}
@@ -474,7 +492,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               <Link2 size={16} className="opacity-80" />
               <button
                 onClick={() => setProblemCollapsed((v) => !v)}
-                className="p-1 rounded hover:bg-gray-200 text-slate-600 dark:hover:bg-slate-700 dark:text-slate-200"
+                className="p-1 rounded hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200"
                 title={problemCollapsed ? "Restore panel" : "Minimize panel"}
               >
                 <Minus size={16} />
@@ -482,22 +500,23 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 text-[14.5px] leading-relaxed text-slate-700 dark:text-slate-300">
-            <div className="space-y-8">
+          <div className="flex-1 overflow-y-auto bg-[#D9DDE1] px-6 pt-6 pb-2 text-[15.5px] leading-8 text-black dark:text-slate-300">
+            <div className="min-h-full flex flex-col">
               {/* Description Section */}
               <div className="space-y-4">
                 {isEditing ? (
                   <textarea
                     value={problemData.description}
                     onChange={(e) => setProblemData({ ...problemData, description: e.target.value })}
-                    className="w-full h-80 p-3 rounded-lg border bg-gray-50 dark:bg-black dark:border-slate-800 outline-none focus:border-blue-500 transition-all font-sans leading-relaxed"
+                    className="w-full h-80 p-3 rounded-lg border bg-gray-50 dark:bg-black dark:border-slate-800 outline-none focus:border-blue-500 transition-all leading-relaxed"
+                    style={{ fontFamily: uiFontFamily }}
                     placeholder="Enter Problem Description... (Use **text** for bold)"
                   />
                 ) : (
-                  <div className="whitespace-pre-wrap leading-relaxed text-[14.5px]">
+                  <div className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black" style={{ fontFamily: uiFontFamily }}>
                     {problemData.description.split(/(\*\*.*?\*\*)/).map((part, i) => {
                       if (part.startsWith('**') && part.endsWith('**')) {
-                        return <strong key={i} className="font-bold text-slate-900 dark:text-slate-100">{part.slice(2, -2)}</strong>;
+                        return <strong key={i} className="font-bold text-black dark:text-slate-100">{part.slice(2, -2)}</strong>;
                       }
                       return <span key={i}>{part}</span>;
                     })}
@@ -506,13 +525,13 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               </div>
 
               {/* Test Cases Mockup Section */}
-              <div className="pt-2 pb-12">
-                <div className={`bg-white dark:bg-black rounded-2xl border border-slate-200 dark:border-slate-800 transition-all duration-300 overflow-hidden ${isEditing ? 'ring-2 ring-blue-500/20' : 'shadow-md shadow-slate-200/50 dark:shadow-none'}`}>
+              <div className="pt-10 pb-2 mt-auto">
+                <div className={`bg-[#FDFEFF] dark:bg-black rounded-2xl border border-[#D7DFEE] dark:border-slate-800 transition-all duration-300 overflow-hidden ${isEditing ? 'ring-2 ring-blue-500/20' : 'shadow-md shadow-slate-300/40 dark:shadow-none'}`}>
                   <div
-                    className="flex items-center justify-between p-5 cursor-pointer group"
+                    className="flex items-center justify-between px-4 py-2.5 cursor-pointer group"
                     onClick={() => !isEditing && setTestCasesExpanded(!testCasesExpanded)}
                   >
-                    <h3 className="font-semibold text-[15px] text-slate-700 dark:text-slate-200 group-hover:text-slate-900 transition-colors">
+                    <h3 className="font-semibold text-[16px] text-slate-800 dark:text-slate-200 group-hover:text-slate-900 transition-colors">
                       Sample Test Cases
                     </h3>
                     {!isEditing && (
@@ -523,11 +542,11 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                   </div>
 
                   {(testCasesExpanded || isEditing) && (
-                    <div className="px-6 pb-6 space-y-8">
+                    <div className="px-4 pb-3 space-y-3">
                       {problemData.testCases.map((tc, idx) => (
-                        <div key={tc.id} className="space-y-4 relative group/tc">
+                        <div key={tc.id} className="space-y-2 relative group/tc">
                           <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-700/50">
-                            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                            <h4 className="font-bold text-[15px] text-slate-800 dark:text-slate-200 flex items-center gap-2">
                               <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                               Test case {idx + 1}
                             </h4>
@@ -572,15 +591,20 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                               />
                             </div>
                           ) : (
-                            <>
-                              {/* Input Pills */}
-                              <div className="flex items-start gap-4 group">
-                                <div className="flex-1 flex flex-wrap gap-2 pt-1">
-                                  {tc.input.split('\n').filter(Boolean).map((line, lIdx) => (
-                                    <div key={lIdx} className="w-full flex">
-                                      <span className="px-3 py-1.5 bg-cyan-100/70 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300 rounded-full font-mono text-sm inline-block shadow-sm">
-                                        {line}
-                                      </span>
+                            <div className="space-y-2">
+                              <div className="flex items-start gap-2 group">
+                                <div className="flex-1 space-y-1.5">
+                                  {tc.input.split("\n").filter(Boolean).map((line, lIdx) => (
+                                    <div key={lIdx} className="flex items-center gap-1.5 flex-wrap">
+                                      {line.split(/\s+/).filter(Boolean).map((token, tokenIdx) => (
+                                        <span
+                                          key={`${lIdx}-${tokenIdx}`}
+                                          className="inline-flex items-center rounded-full bg-emerald-200 px-2 py-[1px] text-[11px] font-medium text-emerald-900 shadow-sm leading-none"
+                                          style={{ fontFamily: uiFontFamily }}
+                                        >
+                                          {token}
+                                        </span>
+                                      ))}
                                     </div>
                                   ))}
                                 </div>
@@ -593,13 +617,13 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                                 </button>
                               </div>
 
-                              {/* Divider line like UI */}
-                              <div className="h-px bg-slate-100 dark:bg-slate-700/50 w-full my-2"></div>
+                              <div className="h-px bg-[#D9E0EA] w-full"></div>
 
-                              {/* Output Text */}
-                              <div className="mt-4 mb-2 uppercase text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500">Output</div>
-                              <div className="flex items-start gap-4 group">
-                                <div className="flex-1 p-3 bg-white dark:bg-black rounded-xl border border-slate-200 shadow-sm dark:border-slate-800 font-mono text-[13px] text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                              <div className="flex items-start gap-2 group">
+                                <div
+                                  className="flex-1 whitespace-pre-wrap text-[13px] leading-7 text-slate-700"
+                                  style={{ fontFamily: uiFontFamily }}
+                                >
                                   {tc.output}
                                 </div>
                                 <button
@@ -611,11 +635,10 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                                 </button>
                               </div>
 
-                              {/* Minor separator between cases except last one */}
                               {idx < problemData.testCases.length - 1 && (
-                                <div className="h-px bg-slate-200 dark:bg-slate-700 w-full absolute -bottom-4"></div>
+                                <div className="h-px bg-[#D9E0EA] w-full absolute -bottom-2"></div>
                               )}
-                            </>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -645,39 +668,39 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
         {!problemCollapsed && (
           <div
             onMouseDown={handleDividerMouseDown}
-            className={`w-2 cursor-col-resize bg-transparent hover:bg-blue-500/20 transition-colors ${isDragging ? "bg-blue-500/30" : ""
+            className={`w-2 cursor-col-resize bg-[#2A3439] hover:bg-[#2A3439] transition-colors ${isDragging ? "bg-[#2A3439]" : ""
               }`}
             style={{ minWidth: "8px" }}
           />
         )}
 
         <div
-          className={`flex-1 flex flex-col overflow-hidden rounded-t-2xl relative transition-[width] border border-transparent dark:border-slate-800 ${darkMode ? 'bg-black' : 'bg-slate-100'
+          className={`flex-1 flex flex-col overflow-hidden rounded-t-lg relative transition-[width] border border-transparent dark:border-slate-800 ${darkMode ? 'bg-black' : 'bg-[#F3F5F8]'
             }`}
           style={{
             width: problemCollapsed ? "100%" : `${100 - splitPercent}%`,
             minWidth: "300px",
           }}
         >
-          <div className={`h-10 border-b flex items-center px-3 justify-between sticky top-0 z-20 rounded-t-xl shadow-sm transition-colors ${darkMode ? 'bg-[#111] border-slate-800' : 'bg-white border-slate-200'
+          <div className={`h-10 border-b flex items-center px-3 justify-between sticky top-0 z-20 rounded-t-lg shadow-sm transition-colors ${darkMode ? 'bg-[#111] border-slate-800' : 'bg-[#2A3439] border-[#2A3439]'
             }`}>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className={`p-1.5 rounded transition-colors ${darkMode ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-slate-100 text-slate-500'}`}
+                className={`p-1.5 rounded transition-colors ${darkMode ? 'hover:bg-white/10 text-gray-400' : 'hover:bg-white/10 text-slate-200'}`}
               >
                 <MessageSquare size={14} />
               </button>
               {problemCollapsed && (
                 <button
                   onClick={() => setProblemCollapsed(false)}
-                  className={`p-1 px-2.5 rounded text-[10px] font-bold border transition-all ${darkMode ? 'bg-[#222] hover:bg-[#333] text-gray-300 border-[#444]' : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                  className={`p-1 px-2.5 rounded text-[10px] font-bold border transition-all ${darkMode ? 'bg-[#222] hover:bg-[#333] text-gray-300 border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'
                     }`}
                 >
                   Show Problem
                 </button>
               )}
-              <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border cursor-pointer shadow-sm transition-all ${darkMode ? 'bg-[#222] hover:bg-[#333] text-gray-300 border-[#444]' : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+              <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border cursor-pointer shadow-sm transition-all ${darkMode ? 'bg-[#222] hover:bg-[#333] text-gray-300 border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'
                 }`}>
                 {language} <ChevronDown size={10} />
               </div>
@@ -685,10 +708,10 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRun}
-                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded border transition-all active:scale-95 shadow-sm ${darkMode ? 'bg-[#222] hover:bg-[#333] text-white border-[#444]' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded border transition-all active:scale-95 shadow-sm ${darkMode ? 'bg-[#222] hover:bg-[#333] text-white border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'
                   }`}
               >
-                <Play size={10} className="text-emerald-500" /> Run
+                <Play size={10} className="text-emerald-300" /> Run
               </button>
               <button
                 onClick={handleSubmit}
@@ -704,13 +727,13 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
           <div className="flex-1 flex overflow-hidden relative transition-colors duration-300">
             <div className={`w-12 border-r text-right p-3 text-[12px] font-mono select-none transition-colors duration-300 ${darkMode
                 ? 'bg-black border-slate-800/80 text-slate-600'
-                : 'bg-slate-50/50 border-slate-200/60 text-slate-400'
+                : 'bg-[#EBEEF3] border-[#DCE1E8] text-slate-500'
               }`}>
               {codeLines.map((_, i) => (
                 <div key={i}>{i + 1}</div>
               ))}
             </div>
-            <div className="flex-1 relative">
+            <div className={`flex-1 relative ${darkMode ? 'bg-black' : 'bg-[#F7F8FA]'}`}>
               <div
                 ref={highlightRef}
                 className={`code-highlight px-3 pointer-events-none transition-colors duration-300 ${darkMode ? 'text-[#d4d4d4]' : 'text-slate-800'
@@ -723,7 +746,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               </div>
               <textarea
                 ref={editorRef}
-                className={`code-textarea px-3 transition-colors duration-300 ${darkMode ? 'dark bg-[#1e1e1e] text-[#d4d4d4]' : 'light bg-white text-slate-800'
+                className={`code-textarea px-3 transition-colors duration-300 ${darkMode ? 'dark bg-[#1e1e1e] text-[#d4d4d4]' : 'light bg-[#F7F8FA] text-slate-800'
                   }`}
                 value={code}
                 onChange={(e) => {
