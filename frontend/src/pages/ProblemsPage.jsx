@@ -26,7 +26,7 @@ function ProblemCard({ problem, isOwner, onDelete }) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!window.confirm(`"${problem.title}" delete karna chahte ho?`)) return;
+    if (!window.confirm(`Are you sure you want to delete "${problem.title}"?`)) return;
     setDeleting(true);
     try {
       await onDelete(problem._id);
@@ -158,7 +158,7 @@ export default function ProblemsPage() {
         isPublic: formIsPublic,
         createdBy: currentUser.uid,
       });
-      setFormSuccess("✅ Problem save ho gayi!");
+      setFormSuccess("Problem saved!");
       setFormTitle("");
       setFormDesc("");
       setFormIsPublic(false);
@@ -166,7 +166,7 @@ export default function ProblemsPage() {
       fetchMyProblems();
       if (formIsPublic) fetchPublicProblems();
     } catch (err) {
-      setFormError(err?.response?.data?.error || "Kuch galat ho gaya, dobara try karo.");
+      setFormError(err?.response?.data?.error || "Something went wrong, please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -185,9 +185,9 @@ export default function ProblemsPage() {
       <div className="mx-auto max-w-4xl">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white">📚 Problems</h1>
+          <h1 className="text-3xl font-black text-slate-900 dark:text-white">Problems</h1>
           <p className="mt-1 text-slate-500 dark:text-slate-400">
-            Apne problems manage karo aur public problems explore karo.
+            Manage your problems and explore public problems.
           </p>
         </div>
 
@@ -401,7 +401,7 @@ export default function ProblemsPage() {
                 />
               </button>
               <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                {formIsPublic ? "Public (sab dekh sakte hain)" : "Private (sirf tum)"}
+                {formIsPublic ? "Public (visible to everyone)" : "Private (only you)"}
               </span>
             </div>
 

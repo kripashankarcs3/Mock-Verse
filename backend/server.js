@@ -155,17 +155,24 @@ app.post("/run", async (req, res) => {
 
       results.push(...cppResults);
     } else if (language === "java") {
-      const className = "Main";
+      const className = `Main_${uniqueId.replace(/-/g, "_")}`;
       const codeFile = path.join(TEMP_DIR, `${className}.java`);
-      fs.writeFileSync(codeFile, code);
+      
+      // Update the code to match the unique class name
+      const updatedCode = code.replace(/public\s+class\s+Main\b/, `public class ${className}`);
+      fs.writeFileSync(codeFile, updatedCode);
 
       await new Promise((resolve, reject) => {
         exec(
           `${javacCommand} "${codeFile}"`,
-          { cwd: TEMP_DIR },
+          { cwd: TEMP_DIR, timeout: 5000 },
           (error, _stdout, stderr) => {
             if (error) {
-              reject({ type: "compile", error: stderr || error.message });
+              if (error.killed) {
+                reject({ type: "compile", error: "Compilation Time Limit Exceeded (5s)" });
+              } else {
+                reject({ type: "compile", error: stderr || error.message });
+              }
             } else {
               resolve();
             }

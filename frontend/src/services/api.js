@@ -35,3 +35,8 @@ export async function deleteProblem(id) {
   const response = await api.delete(`/api/problems/${id}`);
   return response.data;
 }
+
+export async function createOrUpdateUser({ firebaseUID, name, email }) {
+  const response = await api.post("/api/users", { firebaseUID, name, email });
+  return response.data;
+}
