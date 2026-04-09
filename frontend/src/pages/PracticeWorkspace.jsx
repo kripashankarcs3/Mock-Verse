@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import ProgressSummary from "../components/ProgressSummary";
 import { runCode } from "../services/api";
+import Editor from "@monaco-editor/react";
 
 const mockTestCases = [
   { id: 1, input: "6\n3\n1 2 5", expectedOutput: "12\n1 2 5", actualOutput: "12\n1 2 5", passed: true, time: "8 ms" },
@@ -725,36 +726,28 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
           </div>
 
           <div className="flex-1 flex overflow-hidden relative transition-colors duration-300">
-            <div className={`w-12 border-r text-right p-3 text-[12px] font-mono select-none transition-colors duration-300 ${darkMode
-                ? 'bg-black border-slate-800/80 text-slate-600'
-                : 'bg-[#EBEEF3] border-[#DCE1E8] text-slate-500'
-              }`}>
-              {codeLines.map((_, i) => (
-                <div key={i}>{i + 1}</div>
-              ))}
-            </div>
-            <div className={`flex-1 relative ${darkMode ? 'bg-black' : 'bg-[#F7F8FA]'}`}>
-              <div
-                ref={highlightRef}
-                className={`code-highlight px-3 pointer-events-none transition-colors duration-300 ${darkMode ? 'text-[#d4d4d4]' : 'text-slate-800'
-                  }`}
-                aria-hidden="true"
-              >
-                {codeLines.map((line, i) => (
-                  <div key={i} dangerouslySetInnerHTML={{ __html: codeTokens(line) || "&nbsp;" }} />
-                ))}
-              </div>
-              <textarea
-                ref={editorRef}
-                className={`code-textarea px-3 transition-colors duration-300 ${darkMode ? 'dark bg-[#1e1e1e] text-[#d4d4d4]' : 'light bg-[#F7F8FA] text-slate-800'
-                  }`}
+            <div className={`flex-1 relative w-full h-full`}>
+              <Editor
+                height="100%"
+                width="100%"
+                language={language.toLowerCase() === "c++" ? "cpp" : language.toLowerCase()}
+                theme={darkMode ? "vs-dark" : "light"}
                 value={code}
-                onChange={(e) => {
-                  setCode(e.target.value);
+                onChange={(value) => {
+                  setCode(value || "");
                   handleStartTimerOnType();
                 }}
-                onScroll={handleScroll}
-                spellCheck={false}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  fontFamily: 'Consolas, "Courier New", monospace',
+                  padding: { top: 16 },
+                  scrollBeyondLastLine: false,
+                  matchBrackets: "always",
+                  autoClosingBrackets: "always",
+                  autoIndent: "full",
+                  lineNumbers: "on"
+                }}
               />
             </div>
           </div>

@@ -5,7 +5,12 @@ const api = axios.create({
 });
 
 export async function runCode(payload) {
-  const response = await api.post("/run", payload);
+  const response = await api.post("/api/execution/run-code", payload);
+  return response.data;
+}
+
+export async function submitCodeToJudge(payload) {
+  const response = await api.post("/api/execution/submit-code", payload);
   return response.data;
 }
 
