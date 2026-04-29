@@ -179,25 +179,52 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
     }
   };
 
-  const handleRun = () => {
+  const handleRun = async () => {
     setBottomTab("terminal");
     setTerminalOutput("Compiling...\n");
-    setTimeout(() => {
+    const sampleInput = problemData.testCases[0]?.input || "";
+    try {
+      const result = await runCode({ code, language: language === "C++" ? "cpp" : language.toLowerCase(), input: sampleInput });
+      const output = result.stdout || result.stderr || result.compile_output || "No output";
+      const status = result.status || "Unknown";
       setTerminalOutput(
-        "Compilation successful.\nRunning with sample input...\n> 6\n> 3\n> 1 2 5\n\nOutput:\n12\n1 2 5\n\nExecution time: 0.007s",
+        `Status: ${status}\n\nOutput:\n${output}\n\nExecution time: ${result.time}s  Memory: ${result.memory} KB`
       );
-    }, 800);
+    } catch (err) {
+      setTerminalOutput(`Error: ${err?.response?.data?.error || err.message}`);
+    }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setSubmitState("loading");
     setShowResultsPanel(true);
     setBottomTab("testcases");
     setIsSubmitted(true);
-    setTimeout(() => {
-      setTestResults(mockTestCases);
+    try {
+      const results = [];
+      for (const tc of problemData.testCases) {
+        const result = await runCode({ code, language: language === "C++" ? "cpp" : language.toLowerCase(), input: tc.input });
+        const actual = result.stdout ? result.stdout.trim() : "";
+        const expected = (tc.output || tc.expectedOutput || "").trim();
+        const passed = actual === expected && result.status === "Accepted";
+        results.push({
+          id: tc.id,
+          input: tc.input,
+          expectedOutput: expected,
+          actualOutput: actual,
+          passed,
+          time: `${result.time ? (parseFloat(result.time) * 1000).toFixed(0) : "?"} ms`,
+          error: result.stderr || result.compile_output || null,
+        });
+      }
+      setTestResults(results);
       setSubmitState("results");
-    }, 1500);
+    } catch (err) {
+      setTerminalOutput(`Submission error: ${err?.response?.data?.error || err.message}`);
+      setSubmitState("idle");
+      setBottomTab("terminal");
+      setIsSubmitted(false);
+    }
   };
 
   const handleDividerMouseDown = (e) => {

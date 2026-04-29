@@ -14,6 +14,7 @@ connectDB();
 app.use("/api/users", require("./routes/users"));
 app.use("/api/problems", require("./routes/problems"));
 app.use("/api/execution", require("./routes/codeRoutes"));
+app.use("/api/submissions", require("./routes/submissions"));
 
 app.get("/health", (_req, res) => {
   res.json({ message: "Backend is running with Judge0 integration" });

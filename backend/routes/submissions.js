@@ -25,20 +25,22 @@ router.get("/user/:userId", protect, async (req, res) => {
 
 // POST /api/submissions - optional create record
 router.post("/", protect, async (req, res) => {
-  const { problemId, language, result, difficulty, runtimeMs } = req.body;
+  const { problemId, code, language, status, executionTime, memoryStats, testcasesPassed } = req.body;
 
-  if (!language || !result || !difficulty) {
-    return res.status(400).json({ error: "language, result, and difficulty are required." });
+  if (!language || !status) {
+    return res.status(400).json({ error: "language and status are required." });
   }
 
   try {
     const submission = await Submission.create({
       userId: req.user.uid,
       problemId,
+      code,
       language,
-      result,
-      difficulty,
-      runtimeMs,
+      status,
+      executionTime,
+      memoryStats,
+      testcasesPassed,
     });
     res.status(201).json(submission);
   } catch (err) {

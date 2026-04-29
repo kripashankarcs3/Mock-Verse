@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { runCode, getPublicProblems } from "../services/api";
+import { runCode, getPublicProblems, submitCodeToJudge } from "../services/api";
 
 const defaultCode = `#include<bits/stdc++.h>
 using namespace std;
@@ -130,14 +130,12 @@ export default function CodingPlatform() {
     setTerminalOutput("Compiling...\n");
     
     try {
-      const payload = {
-        code,
-        language,
-        testCases: [activeQuestion.testCases[0]]
-      };
-      const result = await runCode(payload);
-      const output = result[0].actual || result[0].error || "No output";
-      setTerminalOutput(`Compilation successful.\nRunning with sample input...\n\nOutput:\n${output}\n\nExecution time: ${result[0].durationSeconds}s`);
+      const sampleInput = activeQuestion.testCases?.[0]?.input || "";
+      const result = await runCode({ code, language, input: sampleInput });
+      const output = result.stdout || result.stderr || result.compile_output || "No output";
+      setTerminalOutput(
+        `Status: ${result.status || "Unknown"}\n\nOutput:\n${output}\n\nExecution time: ${result.time}s  Memory: ${result.memory} KB`
+      );
     } catch (error) {
       setTerminalOutput(`Error: ${error.response?.data?.error || error.message}`);
     }
@@ -151,20 +149,20 @@ export default function CodingPlatform() {
     
     try {
       const payload = {
+        problemId: activeQuestion._id,
         code,
         language,
-        testCases: activeQuestion.testCases
       };
-      const data = await runCode(payload);
+      const data = await submitCodeToJudge(payload);
       
-      const formattedResults = data.map((res, index) => ({
-        id: index + 1,
-        input: activeQuestion.testCases[index].input,
+      const formattedResults = (data.results || []).map((res) => ({
+        id: res.testcase,
+        input: activeQuestion.testCases[res.testcase - 1]?.input || "",
         expectedOutput: res.expected,
         actualOutput: res.actual,
         passed: res.status === "Passed",
-        time: `${res.durationMs} ms`,
-        error: res.error
+        time: `${res.durationSeconds ? (parseFloat(res.durationSeconds) * 1000).toFixed(0) : "?"} ms`,
+        error: res.error,
       }));
       
       setTestResults(formattedResults);
