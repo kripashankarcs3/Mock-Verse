@@ -1,65 +1,88 @@
 const axios = require("axios");
 
-const JUDGE0_API_URL = process.env.JUDGE0_API_URL || "https://ce.judge0.com";
-
 /**
- * Language IDs for Judge0 CE
- * 54 = C++ (GCC 9.2.0)
- * 62 = Java (OpenJDK 13.0.1)
+ * Language IDs for JDoodle API
+ * cpp17 = C++ (GCC 17)
+ * java = Java
  */
-const getLanguageId = (language) => {
+const getLanguageConfig = (language) => {
   const normalized = language.toLowerCase();
-  if (normalized === "cpp" || normalized === "c++") return 54;
-  if (normalized === "java") return 62;
+  if (normalized === "cpp" || normalized === "c++") {
+    return { language: "cpp17", versionIndex: "0" };
+  }
+  if (normalized === "java") {
+    return { language: "java", versionIndex: "0" };
+  }
   throw new Error(`Unsupported language: ${language}. Only cpp and java are supported.`);
 };
 
 /**
- * Runs code against a single input using Judge0 CE public API (no API key needed).
+ * Runs code against a single input using JDoodle API (free, no card needed).
+ * Free tier: 20 executions/day
  */
 const runSingleTestCase = async (code, languageStr, inputStr = "") => {
-  const language_id = getLanguageId(languageStr);
+  const { language, versionIndex } = getLanguageConfig(languageStr);
 
-  const headers = {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  };
+  const clientId = process.env.JDOODLE_CLIENT_ID;
+  const clientSecret = process.env.JDOODLE_CLIENT_SECRET;
 
-  // If RapidAPI key is provided, use RapidAPI endpoint instead
-  const apiKey = process.env.JUDGE0_API_KEY;
-  const apiHost = process.env.JUDGE0_API_HOST;
-  if (apiKey && apiKey.trim() !== "") {
-    headers["X-RapidAPI-Key"] = apiKey;
-    headers["X-RapidAPI-Host"] = apiHost || "judge0-ce.p.rapidapi.com";
+  if (!clientId || !clientSecret) {
+    throw new Error("JDOODLE_CLIENT_ID and JDOODLE_CLIENT_SECRET are required in .env");
   }
 
-  const options = {
-    method: "POST",
-    url: `${JUDGE0_API_URL}/submissions`,
-    params: {
-      base64_encoded: "false",
-      wait: "true",
-      fields: "*",
-    },
-    headers,
-    data: {
-      language_id,
-      source_code: code,
-      stdin: inputStr,
-    },
-    timeout: 30000,
+  const payload = {
+    clientId,
+    clientSecret,
+    script: code,
+    stdin: inputStr,
+    language,
+    versionIndex,
   };
 
   try {
-    const response = await axios.request(options);
-    return response.data;
+    const response = await axios.post("https://api.jdoodle.com/v1/execute", payload, {
+      headers: { "Content-Type": "application/json" },
+      timeout: 30000,
+    });
+
+    const data = response.data;
+
+    // Normalize JDoodle response to match our expected format
+    // JDoodle returns: { output, statusCode, memory, cpuTime }
+    const isSuccess = data.statusCode === 200;
+    const output = data.output || "";
+
+    // Check for common error patterns in output
+    const isCompileError = output.includes("error:") && output.includes(".cpp") ||
+                           output.includes("error:") && output.includes(".java");
+    const isRuntimeError = data.statusCode !== 200;
+
+    return {
+      stdout: (!isCompileError && !isRuntimeError) ? output : "",
+      stderr: isRuntimeError ? output : "",
+      compile_output: isCompileError ? output : "",
+      time: data.cpuTime || "0",
+      memory: data.memory || "0",
+      status: {
+        id: isSuccess && !isCompileError ? 3 : 6,
+        description: isSuccess && !isCompileError ? "Accepted" : "Error",
+      },
+    };
   } catch (error) {
     if (error.response) {
-      throw new Error(`Judge0 API Error: ${JSON.stringify(error.response.data)}`);
-    } else {
-      throw new Error(`Judge0 Service Error: ${error.message}`);
+      const msg = error.response.data?.error || JSON.stringify(error.response.data);
+      throw new Error(`JDoodle API Error: ${msg}`);
     }
+    throw new Error(`JDoodle Service Error: ${error.message}`);
   }
+};
+
+// Keep getLanguageId for backward compatibility
+const getLanguageId = (language) => {
+  const normalized = language.toLowerCase();
+  if (normalized === "cpp" || normalized === "c++") return 54;
+  if (normalized === "java") return 62;
+  throw new Error(`Unsupported language: ${language}`);
 };
 
 module.exports = {
