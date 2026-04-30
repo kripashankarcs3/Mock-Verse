@@ -202,19 +202,25 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
     setIsSubmitted(true);
     try {
       const results = [];
-      for (const tc of problemData.testCases) {
+      // Run shown + hidden test cases both
+      const allTestCases = [
+        ...(problemData.testCases || []).map(tc => ({ ...tc, hidden: false })),
+        ...(problemData.hiddenTestCases || []).map(tc => ({ ...tc, hidden: true })),
+      ];
+      for (const tc of allTestCases) {
         const result = await runCode({ code, language: language === "C++" ? "cpp" : language.toLowerCase(), input: tc.input });
         const actual = result.stdout ? result.stdout.trim() : "";
         const expected = (tc.output || tc.expectedOutput || "").trim();
         const passed = actual === expected && result.status === "Accepted";
         results.push({
           id: tc.id,
-          input: tc.input,
-          expectedOutput: expected,
-          actualOutput: actual,
+          input: tc.hidden ? "🔒 Hidden" : tc.input,
+          expectedOutput: tc.hidden ? "🔒 Hidden" : expected,
+          actualOutput: tc.hidden ? (passed ? "✓ Correct" : "✗ Wrong") : actual,
           passed,
+          hidden: tc.hidden,
           time: `${result.time ? (parseFloat(result.time) * 1000).toFixed(0) : "?"} ms`,
-          error: result.stderr || result.compile_output || null,
+          error: tc.hidden ? null : (result.stderr || result.compile_output || null),
         });
       }
       setTestResults(results);
@@ -364,13 +370,22 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
 
       const cleanStr = (s) => s.trim().replace(/\n+$/, '');
 
+      // First 2 parsed test cases → shown, rest → hidden
+      const shownTcs = newTestCases.slice(0, 2).map(tc => ({
+        ...tc, input: cleanStr(tc.input), output: cleanStr(tc.output), explanation: cleanStr(tc.explanation || "")
+      }));
+      const hiddenTcs = newTestCases.slice(2).map(tc => ({
+        id: tc.id,
+        input: cleanStr(tc.input),
+        output: cleanStr(tc.output),
+      }));
+
       setProblemData(prev => ({
         ...prev,
         title: newTitle || prev.title,
         description: cleanStr(finalDesc) || prev.description,
-        testCases: newTestCases.length > 0 ? newTestCases.map(tc => ({
-          ...tc, input: cleanStr(tc.input), output: cleanStr(tc.output), explanation: cleanStr(tc.explanation)
-        })) : prev.testCases
+        testCases: shownTcs.length > 0 ? shownTcs : prev.testCases,
+        hiddenTestCases: hiddenTcs.length > 0 ? hiddenTcs : prev.hiddenTestCases,
       }));
     } catch (e) {
       console.error("Clipboard read failed", e);
@@ -552,14 +567,17 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                 )}
               </div>
 
-              {/* Test Cases Mockup Section */}
-              <div className="pt-10 pb-2 mt-auto">
+              {/* Test Cases Section */}
+              <div className="pt-10 pb-2 mt-auto space-y-3">
+
+                {/* ── Shown Test Cases ── */}
                 <div className={`bg-[#FDFEFF] dark:bg-black rounded-2xl border border-[#D7DFEE] dark:border-slate-800 transition-all duration-300 overflow-hidden ${isEditing ? 'ring-2 ring-blue-500/20' : 'shadow-md shadow-slate-300/40 dark:shadow-none'}`}>
                   <div
                     className="flex items-center justify-between px-4 py-2.5 cursor-pointer group"
                     onClick={() => !isEditing && setTestCasesExpanded(!testCasesExpanded)}
                   >
-                    <h3 className="font-semibold text-[16px] text-slate-800 dark:text-slate-200 group-hover:text-slate-900 transition-colors">
+                    <h3 className="font-semibold text-[16px] text-slate-800 dark:text-slate-200 group-hover:text-slate-900 transition-colors flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
                       Sample Test Cases
                     </h3>
                     {!isEditing && (
@@ -644,14 +662,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                                   <Copy size={16} />
                                 </button>
                               </div>
-
                               <div className="h-px bg-[#D9E0EA] w-full"></div>
-
                               <div className="flex items-start gap-2 group">
-                                <div
-                                  className="flex-1 whitespace-pre-wrap text-[13px] leading-7 text-slate-700"
-                                  style={{ fontFamily: uiFontFamily }}
-                                >
+                                <div className="flex-1 whitespace-pre-wrap text-[13px] leading-7 text-slate-700" style={{ fontFamily: uiFontFamily }}>
                                   {tc.output}
                                 </div>
                                 <button
@@ -662,10 +675,6 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                                   <Copy size={16} />
                                 </button>
                               </div>
-
-                              {idx < problemData.testCases.length - 1 && (
-                                <div className="h-px bg-[#D9E0EA] w-full absolute -bottom-2"></div>
-                              )}
                             </div>
                           )}
                         </div>
@@ -673,20 +682,103 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
 
                       {isEditing && (
                         <button
-                          onClick={() => {
-                            setProblemData({
-                              ...problemData,
-                              testCases: [...problemData.testCases, { id: Date.now(), input: "", output: "", explanation: "" }]
-                            });
-                          }}
-                          className="w-full py-3 flex items-center justify-center gap-2 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl text-slate-500 dark:text-slate-400 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 transition-all font-bold"
+                          onClick={() => setProblemData({
+                            ...problemData,
+                            testCases: [...problemData.testCases, { id: Date.now(), input: "", output: "", explanation: "" }]
+                          })}
+                          className="w-full py-3 flex items-center justify-center gap-2 border-2 border-dashed border-emerald-300 dark:border-emerald-800 rounded-xl text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all font-bold text-sm"
                         >
-                          <PlusCircle size={18} /> Add New Test Case
+                          <PlusCircle size={16} /> Add Sample Test Case
                         </button>
                       )}
                     </div>
                   )}
                 </div>
+
+                {/* ── Hidden Test Cases ── */}
+                {isEditing && (
+                  <div className="bg-[#FDFEFF] dark:bg-black rounded-2xl border border-orange-200 dark:border-orange-900/40 overflow-hidden ring-2 ring-orange-400/20">
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      <h3 className="font-semibold text-[16px] text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+                        Hidden Test Cases
+                        <span className="text-[10px] font-bold bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 px-2 py-0.5 rounded-full">Not visible to users</span>
+                      </h3>
+                      <span className="text-[11px] text-slate-400">{(problemData.hiddenTestCases || []).length} cases</span>
+                    </div>
+
+                    <div className="px-4 pb-3 space-y-3">
+                      {(problemData.hiddenTestCases || []).length === 0 && (
+                        <p className="text-[12px] text-slate-400 italic py-2">No hidden test cases yet. Add manually or use Auto-Parse.</p>
+                      )}
+                      {(problemData.hiddenTestCases || []).map((tc, idx) => (
+                        <div key={tc.id} className="space-y-2 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl p-3 border border-orange-100 dark:border-orange-900/30">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-bold text-[13px] text-orange-700 dark:text-orange-400 flex items-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                              Hidden {idx + 1}
+                            </h4>
+                            <button
+                              onClick={() => {
+                                const newTc = [...(problemData.hiddenTestCases || [])];
+                                newTc.splice(idx, 1);
+                                setProblemData({ ...problemData, hiddenTestCases: newTc });
+                              }}
+                              className="text-red-400 hover:text-red-600 p-1"
+                              title="Remove Hidden Test Case"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <div className="space-y-1.5">
+                            <span className="text-[10px] uppercase font-bold text-orange-400">Input</span>
+                            <textarea
+                              value={tc.input}
+                              onChange={(e) => {
+                                const newTc = [...(problemData.hiddenTestCases || [])];
+                                newTc[idx].input = e.target.value;
+                                setProblemData({ ...problemData, hiddenTestCases: newTc });
+                              }}
+                              className="w-full h-14 p-2 rounded-lg bg-white dark:bg-black border border-orange-200 dark:border-orange-900 font-mono text-xs outline-none focus:border-orange-400 text-slate-800 dark:text-slate-200"
+                              placeholder="Hidden input..."
+                            />
+                            <span className="text-[10px] uppercase font-bold text-orange-400 block">Output</span>
+                            <textarea
+                              value={tc.output}
+                              onChange={(e) => {
+                                const newTc = [...(problemData.hiddenTestCases || [])];
+                                newTc[idx].output = e.target.value;
+                                setProblemData({ ...problemData, hiddenTestCases: newTc });
+                              }}
+                              className="w-full h-14 p-2 rounded-lg bg-white dark:bg-black border border-orange-200 dark:border-orange-900 font-mono text-xs outline-none focus:border-orange-400 text-slate-800 dark:text-slate-200"
+                              placeholder="Expected output..."
+                            />
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        onClick={() => setProblemData({
+                          ...problemData,
+                          hiddenTestCases: [...(problemData.hiddenTestCases || []), { id: Date.now(), input: "", output: "" }]
+                        })}
+                        className="w-full py-3 flex items-center justify-center gap-2 border-2 border-dashed border-orange-300 dark:border-orange-800 rounded-xl text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all font-bold text-sm"
+                      >
+                        <PlusCircle size={16} /> Add Hidden Test Case
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Hidden count badge (view mode) */}
+                {!isEditing && (problemData.hiddenTestCases || []).length > 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-900/30">
+                    <span className="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+                    <span className="text-[12px] text-orange-600 dark:text-orange-400 font-semibold">
+                      + {(problemData.hiddenTestCases || []).length} hidden test case{(problemData.hiddenTestCases || []).length > 1 ? 's' : ''} (not shown to users)
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
