@@ -30,7 +30,7 @@ const mockTestCases = [
   { id: 4, input: "8\n3\n1 4 6", expectedOutput: "17\n1 4 6", actualOutput: "17\n1 4 6", passed: true, time: "5 ms" },
 ];
 
-const sidebarQuestions = [
+const sidebarQuestionsDefault = [
   { id: 1, num: "26.1.1", title: "Rod Cutting", difficulty: "Hard" },
   { id: 2, num: "26.1.2", title: "Matrix Chain Multiplication", difficulty: "Hard" },
   { id: 3, num: "26.1.3", title: "Longest Common Subsequence", difficulty: "Medium" },
@@ -115,6 +115,7 @@ const codeTokens = (line) => {
 
 export default function PracticeWorkspace({ onBack, darkMode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarQuestions, setSidebarQuestions] = useState(sidebarQuestionsDefault);
   const [activeQuestion, setActiveQuestion] = useState(1);
   const [language, setLanguage] = useState("C++");
   const [code, setCode] = useState(defaultCode);
@@ -454,29 +455,73 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <aside className={`sidebar-panel ${darkMode ? 'dark' : ''} ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex flex-col h-full">
-          <div className="p-4 border-b flex justify-between items-center bg-white dark:bg-slate-800">
-            <span className="font-bold text-gray-800 dark:text-slate-100">Questions</span>
-            <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-gray-600">
-              ×
+          {/* Header */}
+          <div className="p-4 border-b flex justify-between items-center bg-white dark:bg-slate-800 shrink-0">
+            <span className="font-bold text-gray-800 dark:text-slate-100 text-sm">Questions</span>
+            <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 text-xl leading-none">×</button>
+          </div>
+
+          {/* Add New Question Button */}
+          <div className="px-3 pt-3 pb-2 shrink-0">
+            <button
+              onClick={() => {
+                const newQ = {
+                  id: Date.now(),
+                  num: `Q${sidebarQuestions.length + 1}`,
+                  title: "New Question",
+                  difficulty: "Medium",
+                };
+                setSidebarQuestions(prev => [newQ, ...prev]);
+                setActiveQuestion(newQ.id);
+                setProblemData({
+                  num: newQ.num,
+                  title: newQ.title,
+                  description: "",
+                  testCases: [{ id: Date.now(), input: "", output: "", explanation: "" }],
+                  hiddenTestCases: [],
+                });
+                setIsEditing(true);
+                setSidebarOpen(false);
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm transition-colors shadow-sm"
+            >
+              <PlusCircle size={16} /> Add New Question
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-2">
-            {sidebarQuestions.map((q) => (
-              <div
-                key={q.id}
-                onClick={() => {
-                  setActiveQuestion(q.id);
-                  setSidebarOpen(false);
-                }}
-                className={`p-3 rounded-lg mb-1 cursor-pointer transition-colors ${activeQuestion === q.id
-                    ? "bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-300"
-                    : "hover:bg-gray-100 text-gray-700 dark:hover:bg-slate-700 dark:text-slate-200"
-                  }`}
-              >
-                <p className="text-[10px] font-mono opacity-50">{q.num}</p>
-                <p className="text-sm font-semibold">{q.title}</p>
-              </div>
-            ))}
+
+          {/* Questions List */}
+          <div className="flex-1 overflow-y-auto px-2 pb-2">
+            {sidebarQuestions.length === 0 ? (
+              <p className="text-center text-slate-400 text-xs py-8">No questions yet. Add one above!</p>
+            ) : (
+              sidebarQuestions.map((q) => (
+                <div
+                  key={q.id}
+                  onClick={() => {
+                    setActiveQuestion(q.id);
+                    setSidebarOpen(false);
+                  }}
+                  className={`p-3 rounded-xl mb-1 cursor-pointer transition-colors ${activeQuestion === q.id
+                      ? "bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
+                      : "hover:bg-gray-100 text-gray-700 dark:hover:bg-slate-700 dark:text-slate-200"
+                    }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-mono opacity-50">{q.num}</p>
+                      <p className="text-sm font-semibold truncate">{q.title}</p>
+                    </div>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                      q.difficulty === "Easy" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" :
+                      q.difficulty === "Hard" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
+                      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+                    }`}>
+                      {q.difficulty}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </aside>
@@ -498,6 +543,14 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                 title="Back to Dashboard"
               >
                 <ArrowLeft size={16} />
+              </button>
+              {/* Sidebar Toggle */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-1.5 rounded-full hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200"
+                title="Show Questions"
+              >
+                <List size={16} />
               </button>
               {isEditing ? (
                 <input
