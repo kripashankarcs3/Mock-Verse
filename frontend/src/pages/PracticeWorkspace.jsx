@@ -38,45 +38,74 @@ const sidebarQuestionsDefault = [
   { id: 5, num: "26.1.5", title: "Coin Change", difficulty: "Easy" },
 ];
 
-const defaultCode = `#include<bits/stdc++.h>
+const defaultCodeCpp = `#include<bits/stdc++.h>
 using namespace std;
 
-int dp[105][105], cut[105][105], a[105];
-
-void print(int i, int j){
-    if(j-i<=1)
-        return ;
-    int k =cut[i][j];
-    cout << a[k] << " ";
-    print(i, k);
-    print(k, j);
-}
-
 int main(){
-    int n, m;
-    cin >> n >> m;
-    for(int i=1; i<=m; i++)
-        cin >> a[i];
-    a[m+1] = n;
-    sort(a, a+m+2);
-
-    for(int len=2; len<=m+1; len++)
-        for(int i=0; i+len<=m+1; i++){
-            int j = i+len;
-            dp[i][j] = INT_MAX;
-            for(int k=i+1; k<j; k++){
-                int cost = dp[i][k] + dp[k][j] + a[j] - a[i];
-                if(cost < dp[i][j]){
-                    dp[i][j] = cost;
-                    cut[i][j] = k;
-                }
-            }
-        }
-
-    cout << dp[0][m+1] << endl;
-    print(0, m+1);
+    // Write your C++ code here
     return 0;
 }`;
+
+const defaultCodeJava = `import java.util.*;
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        // Write your Java code here
+    }
+}`;
+
+const defaultCode = defaultCodeCpp;
+
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const stripParsedTestCaseSections = (text = "") =>
+  text
+    .replace(/SHOWN TEST CASES?:[\s\S]*?(?=HIDDEN TEST CASES?:|$)/gi, "")
+    .replace(/HIDDEN TEST CASES?:[\s\S]*$/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+const extractSection = (text, label, nextLabels = []) => {
+  const escapedLabel = escapeRegex(label);
+  const boundary = nextLabels.length
+    ? `(?=\\b(?:${nextLabels.map(escapeRegex).join("|")})\\b\\s*:)`
+    : "$";
+  const match = text.match(new RegExp(`\\b${escapedLabel}\\b\\s*:\\s*([\\s\\S]*?)${boundary}`, "i"));
+  return match?.[1]?.trim() || "";
+};
+
+const parseAutoParsedCases = (text, idOffset = 0) =>
+  text
+    .split(/(?=Input:\s*)/i)
+    .map((block, index) => {
+      const input = block.match(/Input:\s*([\s\S]*?)(?=\bOutput\b\s*:|$)/i)?.[1]?.trim();
+      const output = block.match(/Output:\s*([\s\S]*?)$/i)?.[1]?.trim();
+
+      if (!input || !output) {
+        return null;
+      }
+
+      return {
+        id: Date.now() + idOffset + index,
+        input,
+        output,
+        explanation: "",
+      };
+    })
+    .filter(Boolean);
+
+const renderFormattedDescription = (text) =>
+  text.split(/(\*\*.*?\*\*)/).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} className="font-bold text-black dark:text-slate-100">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
 
 const codeTokens = (line) => {
   const keywords = /\b(int|void|for|if|return|using|namespace|std|include|cout|cin|sort|endl|else|while)\b/g;
@@ -118,6 +147,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
   const [sidebarQuestions, setSidebarQuestions] = useState(sidebarQuestionsDefault);
   const [activeQuestion, setActiveQuestion] = useState(1);
   const [language, setLanguage] = useState("C++");
+  const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [code, setCode] = useState(defaultCode);
   const [bottomTab, setBottomTab] = useState("terminal");
   const [isEditing, setIsEditing] = useState(false);
@@ -247,152 +277,104 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
       const text = await navigator.clipboard.readText();
       if (!text) return;
 
-      let newTitle = problemData.title;
-      let newDescription = "";
-      let newTestCases = [];
+      console.log("Clipboard text:", text);
 
-      const lines = text.split('\n');
-      const firstLine = lines.find(l => l.trim().replace(/[\*\#\`]/g, '').length > 0);
-      if (firstLine && firstLine.length < 80) {
-        newTitle = firstLine.trim().replace(/[\*\#\`]/g, '');
+      const sanitizedText = stripParsedTestCaseSections(text);
+      let newTitle = "";
+      const descriptionParts = [];
+      let newShownTestCases = [];
+      let newHiddenTestCases = [];
+
+      const titleText = extractSection(text, "TITLE", [
+        "PROBLEM",
+        "INPUT",
+        "OUTPUT",
+        "CONSTRAINTS",
+        "EXAMPLE",
+        "SHOWN TEST CASES",
+        "HIDDEN TEST CASES",
+      ]);
+      if (titleText) {
+        newTitle = titleText;
       }
 
-      let currentSection = 'description';
-      let currentTc = null;
-      let currentTcLines = [];
-      let hasExplicitLabels = false;
+      const problemText = extractSection(sanitizedText, "PROBLEM", [
+        "INPUT",
+        "OUTPUT",
+        "CONSTRAINTS",
+        "EXAMPLE",
+      ]);
+      if (problemText) {
+        descriptionParts.push(problemText);
+      }
 
-      const finalizeTc = () => {
-        if (!currentTc) return;
-        if (!hasExplicitLabels && currentTcLines.length > 0) {
-          const nonEmpty = currentTcLines.filter(l => l.trim().length > 0);
-          if (nonEmpty.length > 0) {
-            const outLine = nonEmpty.pop();
-            currentTc.output = outLine.replace(/·/g, '\n').trim();
-            currentTc.input = nonEmpty.join('\n').replace(/\t/g, '').trim();
-          }
-        }
-        if (currentTc.input.trim() !== "" || currentTc.output.trim() !== "") {
-          newTestCases.push(currentTc);
-        }
-      };
+      const inputFormatText = extractSection(sanitizedText, "INPUT", [
+        "OUTPUT",
+        "CONSTRAINTS",
+        "EXAMPLE",
+      ]);
+      if (inputFormatText) {
+        descriptionParts.push(`**Input:** ${inputFormatText}`);
+      }
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const lowerLine = line.toLowerCase().trim();
-        const cleanedLine = lowerLine.replace(/[\*\#]/g, '').trim();
+      const outputFormatText = extractSection(sanitizedText, "OUTPUT", [
+        "CONSTRAINTS",
+        "EXAMPLE",
+      ]);
+      if (outputFormatText) {
+        descriptionParts.push(`**Output:** ${outputFormatText}`);
+      }
 
-        if (cleanedLine === 'sample test cases') continue;
+      const constraintsText = extractSection(sanitizedText, "CONSTRAINTS", ["EXAMPLE"]);
+      if (constraintsText) {
+        descriptionParts.push(`**Constraints:** ${constraintsText}`);
+      }
 
-        if (cleanedLine.startsWith('example') || cleanedLine.startsWith('test case')) {
-          finalizeTc();
-          currentTc = { id: Date.now() + i, input: "", output: "", explanation: "" };
-          currentTcLines = [];
-          hasExplicitLabels = false;
-          currentSection = 'example';
-          continue;
-        }
+      const exampleText = extractSection(sanitizedText, "EXAMPLE");
+      if (exampleText) {
+        const exampleInput = exampleText.match(/Input:\s*([\s\S]*?)(?=\bOutput\b\s*:|$)/i)?.[1]?.trim();
+        const exampleOutput = exampleText.match(/Output:\s*([\s\S]*?)$/i)?.[1]?.trim();
 
-        const inputMatch = cleanedLine.match(/^input\s*[:=]\s*(.*)/);
-        if (inputMatch) {
-          hasExplicitLabels = true;
-          currentSection = 'input';
-          if (!currentTc) currentTc = { id: Date.now() + i, input: "", output: "", explanation: "" };
-          let val = inputMatch[1];
-          if (val) currentTc.input += val + "\n";
-          continue;
-        }
-
-        const outputMatch = cleanedLine.match(/^output\s*[:=]\s*(.*)/);
-        if (outputMatch) {
-          hasExplicitLabels = true;
-          currentSection = 'output';
-          if (!currentTc) currentTc = { id: Date.now() + i, input: "", output: "", explanation: "" };
-          let val = outputMatch[1];
-          if (val) currentTc.output += val + "\n";
-          continue;
-        }
-
-        const expMatch = cleanedLine.match(/^explanation\s*[:=]\s*(.*)/);
-        if (expMatch) {
-          hasExplicitLabels = true;
-          currentSection = 'explanation';
-          if (!currentTc) currentTc = { id: Date.now() + i, input: "", output: "", explanation: "" };
-          let val = expMatch[1];
-          if (val) currentTc.explanation += val + "\n";
-          continue;
-        }
-
-        if (cleanedLine.startsWith('constraints:') || cleanedLine === 'constraints' || cleanedLine.startsWith('note:') || cleanedLine === 'note') {
-          currentSection = 'ignore';
-          continue;
-        }
-
-        if (cleanedLine.startsWith('input format:') || cleanedLine === 'input format' || cleanedLine.startsWith('output format:') || cleanedLine === 'output format') {
-          currentSection = 'description';
-          newDescription += `\n**${line.trim()}**\n`;
-          continue;
-        }
-
-        // Output lines handling
-        if (currentSection === 'ignore') {
-          continue;
-        } else if (currentSection === 'description') {
-          if (line.trim().replace(/[\*\#]/g, '') === newTitle) continue;
-          newDescription += line + "\n";
-        } else if (currentSection === 'example' && currentTc) {
-          if (!hasExplicitLabels) {
-            currentTcLines.push(line);
-          }
-        } else if (currentSection === 'input' && currentTc) {
-          currentTc.input += line + "\n";
-        } else if (currentSection === 'output' && currentTc) {
-          currentTc.output += line + "\n";
-        } else if (currentSection === 'explanation' && currentTc) {
-          currentTc.explanation += line + "\n";
+        if (exampleInput || exampleOutput) {
+          const exampleLines = ["**Example:**"];
+          if (exampleInput) exampleLines.push(`Input: ${exampleInput}`);
+          if (exampleOutput) exampleLines.push(`Output: ${exampleOutput}`);
+          descriptionParts.push(exampleLines.join("\n"));
+        } else {
+          descriptionParts.push(`**Example:**\n${exampleText}`);
         }
       }
-      finalizeTc();
 
-      // Normalize spacing and fix copy-paste layout artifacts
-      let finalDesc = newDescription;
-      // 1. Join isolated very short variables that broke onto their own line (e.g. \n n \n -> ' n ')
-      finalDesc = finalDesc.replace(/\n\s*([a-zA-Z0-9_\-\+\=\<\>]{1,4})\s*\n/g, ' $1 ');
-      finalDesc = finalDesc.replace(/\n\s*([a-zA-Z0-9_\-\+\=\<\>]{1,4})\s*\n/g, ' $1 '); // Run twice for overlap
+      const shownText = extractSection(text, "SHOWN TEST CASES", ["HIDDEN TEST CASES"]);
+      if (shownText) {
+        newShownTestCases = parseAutoParsedCases(shownText);
+      }
 
-      // 2. Fix mid-sentence breaks (e.g. line ends in letter, next line starts with lowercase or number)
-      finalDesc = finalDesc.replace(/([a-zA-Z0-9])\s*\n\s*([a-z0-9])/g, '$1 $2');
+      const hiddenText = extractSection(text, "HIDDEN TEST CASES");
+      if (hiddenText) {
+        newHiddenTestCases = parseAutoParsedCases(hiddenText, 1000).map(({ explanation, ...tc }) => tc);
+      }
 
-      // 3. Fix dangling punctuation and extra spaces before punctuation (like ` \n,` or ` ,`)
-      finalDesc = finalDesc.replace(/\s+([,\.\:\;\)])/g, '$1');
+      const nextDescription = stripParsedTestCaseSections(descriptionParts.join("\n\n"));
 
-      // 4. Clean up massive vertical gaps even with hidden spaces/returns to max 2 newlines
-      finalDesc = finalDesc.replace(/\n([\s]*\n)+/g, '\n\n');
-
-      const cleanStr = (s) => s.trim().replace(/\n+$/, '');
-
-      // First 2 parsed test cases → shown, rest → hidden
-      const shownTcs = newTestCases.slice(0, 2).map(tc => ({
-        ...tc, input: cleanStr(tc.input), output: cleanStr(tc.output), explanation: cleanStr(tc.explanation || "")
-      }));
-      const hiddenTcs = newTestCases.slice(2).map(tc => ({
-        id: tc.id,
-        input: cleanStr(tc.input),
-        output: cleanStr(tc.output),
-      }));
-
-      setProblemData(prev => ({
+      setProblemData((prev) => ({
         ...prev,
         title: newTitle || prev.title,
-        description: cleanStr(finalDesc) || prev.description,
-        testCases: shownTcs.length > 0 ? shownTcs : prev.testCases,
-        hiddenTestCases: hiddenTcs.length > 0 ? hiddenTcs : prev.hiddenTestCases,
+        description: nextDescription || stripParsedTestCaseSections(prev.description),
+        testCases: newShownTestCases.length > 0 ? newShownTestCases : prev.testCases,
+        hiddenTestCases: newHiddenTestCases.length > 0 ? newHiddenTestCases : prev.hiddenTestCases,
       }));
+
+      if (newShownTestCases.length > 0) {
+        setTestCasesExpanded(true);
+      }
     } catch (e) {
       console.error("Clipboard read failed", e);
-      alert("Clipboard access is required to use Auto-Parse. You can manually paste into the fields.");
+      alert("Clipboard access is required to use Auto-Parse.");
     }
   };
+
+  const splitPercentRef = useRef(splitPercent);
 
   const handleMouseMove = useCallback(
     (e) => {
@@ -405,7 +387,12 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
       const rawLeft = e.clientX - rect.left;
       const clampedLeft = Math.min(rect.width - minRight, Math.max(minLeft, rawLeft));
       const percent = (clampedLeft / rect.width) * 100;
-      setSplitPercent(percent);
+      splitPercentRef.current = percent;
+      // Direct DOM update — no React re-render, max smooth
+      const leftPanel = container.querySelector('[data-panel="left"]');
+      const rightPanel = container.querySelector('[data-panel="right"]');
+      if (leftPanel) leftPanel.style.width = `${percent}%`;
+      if (rightPanel) rightPanel.style.flex = 'none', rightPanel.style.width = `${100 - percent}%`;
     },
     [isDragging, problemCollapsed],
   );
@@ -413,6 +400,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
   const handleMouseUp = useCallback(() => {
     if (!isDragging) return;
     setIsDragging(false);
+    setSplitPercent(splitPercentRef.current);
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
   }, [isDragging]);
@@ -501,23 +489,40 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                     setActiveQuestion(q.id);
                     setSidebarOpen(false);
                   }}
-                  className={`p-3 rounded-xl mb-1 cursor-pointer transition-colors ${activeQuestion === q.id
+                  className={`p-3 rounded-xl mb-1 cursor-pointer transition-colors group ${activeQuestion === q.id
                       ? "bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
                       : "hover:bg-gray-100 text-gray-700 dark:hover:bg-slate-700 dark:text-slate-200"
                     }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-mono opacity-50">{q.num}</p>
                       <p className="text-sm font-semibold truncate">{q.title}</p>
                     </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                      q.difficulty === "Easy" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" :
-                      q.difficulty === "Hard" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
-                      "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
-                    }`}>
-                      {q.difficulty}
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        q.difficulty === "Easy" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" :
+                        q.difficulty === "Hard" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
+                        "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400"
+                      }`}>
+                        {q.difficulty}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`"${q.title}" delete karna chahte ho?`)) return;
+                          setSidebarQuestions(prev => prev.filter(x => x.id !== q.id));
+                          if (activeQuestion === q.id) {
+                            const remaining = sidebarQuestions.filter(x => x.id !== q.id);
+                            if (remaining.length > 0) setActiveQuestion(remaining[0].id);
+                          }
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400 hover:text-red-600 transition-all"
+                        title="Delete question"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -527,8 +532,23 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
       </aside>
 
       <div className="flex flex-1 overflow-hidden border-t border-white" ref={containerRef} style={{ fontFamily: uiFontFamily }}>
+
+        {/* Questions Sidebar Toggle */}
+        {!problemCollapsed && (
+          <button
+            onClick={() => setSidebarOpen(true)}
+            title="Show Questions"
+            className="absolute left-0 top-1/3 -translate-y-1/2 -translate-x-1/2 z-30 w-11 h-8 flex flex-col items-center justify-center gap-1 bg-slate-400/50 hover:bg-slate-500/70 rounded-full shadow transition-colors backdrop-blur-sm"
+            style={{ marginTop: "22px" }}
+          >
+            <span className="block w-5 h-0.5 bg-slate-700 dark:bg-slate-200 rounded-full"></span>
+            <span className="block w-5 h-0.5 bg-slate-700 dark:bg-slate-200 rounded-full"></span>
+          </button>
+        )}
+
         <div
-          className={`bg-[#D9DDE1] border-r border-[#D9DDE1] flex flex-col overflow-hidden rounded-t-lg relative transition-[width] dark:bg-black dark:border-slate-800/80 ${problemCollapsed ? "pointer-events-none" : ""
+          data-panel="left"
+          className={`bg-[#D9DDE1] border-r border-[#D9DDE1] flex flex-col overflow-hidden rounded-t-lg relative dark:bg-black dark:border-slate-800/80 ${problemCollapsed ? "pointer-events-none" : ""} ${isDragging ? "" : "transition-[width] duration-150"
             }`}
           style={{
             width: problemCollapsed ? 0 : `${splitPercent}%`,
@@ -543,14 +563,6 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                 title="Back to Dashboard"
               >
                 <ArrowLeft size={16} />
-              </button>
-              {/* Sidebar Toggle */}
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="p-1.5 rounded-full hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200"
-                title="Show Questions"
-              >
-                <List size={16} />
               </button>
               {isEditing ? (
                 <input
@@ -601,21 +613,29 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               {/* Description Section */}
               <div className="space-y-4">
                 {isEditing ? (
-                  <textarea
-                    value={problemData.description}
-                    onChange={(e) => setProblemData({ ...problemData, description: e.target.value })}
-                    className="w-full h-80 p-3 rounded-lg border bg-gray-50 dark:bg-black dark:border-slate-800 outline-none focus:border-blue-500 transition-all leading-relaxed"
-                    style={{ fontFamily: uiFontFamily }}
-                    placeholder="Enter Problem Description... (Use **text** for bold)"
-                  />
+                  <>
+                    <textarea
+                      value={problemData.description}
+                      onChange={(e) => setProblemData({ ...problemData, description: e.target.value })}
+                      className="w-full h-80 p-3 rounded-lg border bg-gray-50 dark:bg-black dark:border-slate-800 outline-none focus:border-blue-500 transition-all leading-relaxed"
+                      style={{ fontFamily: uiFontFamily }}
+                      placeholder="Enter Problem Description... (Use **text** for bold)"
+                    />
+                    <div className="rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm">
+                      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                        Preview
+                      </p>
+                      <div
+                        className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black"
+                        style={{ fontFamily: uiFontFamily }}
+                      >
+                        {renderFormattedDescription(problemData.description)}
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <div className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black" style={{ fontFamily: uiFontFamily }}>
-                    {problemData.description.split(/(\*\*.*?\*\*)/).map((part, i) => {
-                      if (part.startsWith('**') && part.endsWith('**')) {
-                        return <strong key={i} className="font-bold text-black dark:text-slate-100">{part.slice(2, -2)}</strong>;
-                      }
-                      return <span key={i}>{part}</span>;
-                    })}
+                    {renderFormattedDescription(problemData.description)}
                   </div>
                 )}
               </div>
@@ -841,14 +861,16 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
         {!problemCollapsed && (
           <div
             onMouseDown={handleDividerMouseDown}
-            className={`w-2 cursor-col-resize bg-[#2A3439] hover:bg-[#2A3439] transition-colors ${isDragging ? "bg-[#2A3439]" : ""
-              }`}
-            style={{ minWidth: "8px" }}
-          />
+            className={`cursor-col-resize flex items-center justify-center transition-colors ${isDragging ? "bg-[#2A3439]/80" : "bg-[#2A3439]/60 hover:bg-[#2A3439]/90"}`}
+            style={{ minWidth: "6px", width: "6px" }}
+          >
+            <div className="w-[3px] h-12 rounded-full bg-slate-400/60 hover:bg-slate-300 transition-colors" />
+          </div>
         )}
 
         <div
-          className={`flex-1 flex flex-col overflow-hidden rounded-t-lg relative transition-[width] border border-transparent dark:border-slate-800 ${darkMode ? 'bg-black' : 'bg-[#F3F5F8]'
+          data-panel="right"
+          className={`flex-1 flex flex-col overflow-hidden rounded-t-lg relative border border-transparent dark:border-slate-800 ${darkMode ? 'bg-black' : 'bg-[#F3F5F8]'} ${isDragging ? "" : "transition-[width] duration-150"
             }`}
           style={{
             width: problemCollapsed ? "100%" : `${100 - splitPercent}%`,
@@ -873,9 +895,31 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                   Show Problem
                 </button>
               )}
-              <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border cursor-pointer shadow-sm transition-all ${darkMode ? 'bg-[#222] hover:bg-[#333] text-gray-300 border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'
-                }`}>
-                {language} <ChevronDown size={10} />
+              <div className="relative">
+                <div
+                  onClick={() => setLangDropdownOpen(v => !v)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold border cursor-pointer shadow-sm transition-all ${darkMode ? 'bg-[#222] hover:bg-[#333] text-gray-300 border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'}`}
+                >
+                  {language} <ChevronDown size={10} />
+                </div>
+                {langDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-[#1e1e1e] border border-[#444] rounded-lg shadow-xl overflow-hidden min-w-[90px]">
+                    {["C++", "Java"].map(lang => (
+                      <button
+                        key={lang}
+                        onClick={() => { 
+                          setLanguage(lang); 
+                          setLangDropdownOpen(false);
+                          // Change default code when language switches
+                          setCode(lang === "Java" ? defaultCodeJava : defaultCodeCpp);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors ${language === lang ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-[#2a2a2a]'}`}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -945,7 +989,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                       const times = testResults.map((t) => Number(t.time.split(" ")[0]) || 0);
                       const avg = times.length > 0 ? (times.reduce((a, b) => a + b, 0) / times.length).toFixed(3) : "0.000";
                       const max = times.length > 0 ? Math.max(...times).toFixed(3) : "0.000";
-                      const passed = testResults.filter((t) => t.passed).length;
+                      const passed = testResults.filter((t) => t.passed && !t.hidden).length;
                       return (
                         <>
                           <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
@@ -961,8 +1005,14 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                             </div>
                           </div>
                           <div className="grid grid-cols-1 gap-2 mb-4">
-                            <ProgressSummary passed={passed} total={testResults.length} label="shown test case(s) passed" />
-                            <ProgressSummary passed={4} total={4} label="hidden test case(s) passed" />
+                            <ProgressSummary passed={passed} total={testResults.filter(t => !t.hidden).length} label="shown test case(s) passed" />
+                            {testResults.some(t => t.hidden) && (
+                              <ProgressSummary
+                                passed={testResults.filter(t => t.hidden && t.passed).length}
+                                total={testResults.filter(t => t.hidden).length}
+                                label="hidden test case(s) passed"
+                              />
+                            )}
                           </div>
                           <div className="space-y-3">
                             {testResults.map((tc) => (
