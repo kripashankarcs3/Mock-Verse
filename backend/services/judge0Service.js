@@ -1,88 +1,125 @@
 const axios = require("axios");
 
 /**
- * Language IDs for JDoodle API
- * cpp17 = C++ (GCC 17)
- * java = Java
+ * Language IDs for Judge0 CE API
+ * 54 = C++ (GCC 9.2.0)
+ * 62 = Java (OpenJDK 13.0.1)
  */
-const getLanguageConfig = (language) => {
-  const normalized = language.toLowerCase();
-  if (normalized === "cpp" || normalized === "c++") {
-    return { language: "cpp17", versionIndex: "0" };
+const getLanguageId = (language) => {
+  const normalized = String(language || "").toLowerCase();
+  if (normalized === "cpp" || normalized === "c++") return 54;
+  if (normalized === "java") return 62;
+  const error = new Error(`Unsupported language: ${language}. Only cpp and java are supported.`);
+  error.status = 400;
+  throw error;
+};
+
+const toBase64 = (str) => Buffer.from(str || "").toString("base64");
+const fromBase64 = (str) => {
+  if (!str) return "";
+  try {
+    return Buffer.from(str, "base64").toString("utf8");
+  } catch {
+    return str;
   }
-  if (normalized === "java") {
-    return { language: "java", versionIndex: "0" };
+};
+
+const judgeError = (code, message) => {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const REQUEST_TIMEOUT_MS = 15_000;
+const POLL_INTERVAL_MS = 1_000;
+const OVERALL_TIMEOUT_MS = 30_000;
+
+/** Single axios call with Judge0 error normalisation. */
+const request = async (config) => {
+  try {
+    return await axios(config);
+  } catch (error) {
+    if (error.response) {
+      const status = error.response.status;
+      const data = error.response.data;
+      const detail = data?.error || data?.message || String(JSON.stringify(data) || "").slice(0, 200);
+      if (status === 429) throw judgeError("JUDGE_RATE_LIMIT", "Judge0 rate limit reached");
+      if (status >= 500) throw judgeError("JUDGE_UPSTREAM", `Judge0 upstream error (${status})`);
+      throw judgeError("JUDGE_REQUEST", `Judge0 rejected the request (${status}): ${detail}`);
+    }
+    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+      throw judgeError("JUDGE_TIMEOUT", "Judge0 request timed out");
+    }
+    throw judgeError("JUDGE_UNAVAILABLE", "Judge0 is unreachable");
   }
-  throw new Error(`Unsupported language: ${language}. Only cpp and java are supported.`);
 };
 
 /**
- * Runs code against a single input using JDoodle API (free, no card needed).
- * Free tier: 20 executions/day
+ * Runs code against a single input using Judge0 CE API.
+ * Uses ce.judge0.com (free, no API key needed) or RapidAPI Judge0 if key is set.
  */
 const runSingleTestCase = async (code, languageStr, inputStr = "") => {
-  const { language, versionIndex } = getLanguageConfig(languageStr);
+  const languageId = getLanguageId(languageStr);
 
-  const clientId = process.env.JDOODLE_CLIENT_ID;
-  const clientSecret = process.env.JDOODLE_CLIENT_SECRET;
+  const apiUrl = process.env.JUDGE0_API_URL || "https://ce.judge0.com";
+  const apiKey = process.env.JUDGE0_API_KEY;
+  const apiHost = process.env.JUDGE0_API_HOST;
 
-  if (!clientId || !clientSecret) {
-    throw new Error("JDOODLE_CLIENT_ID and JDOODLE_CLIENT_SECRET are required in .env");
+  const headers = { "Content-Type": "application/json" };
+  if (apiKey) {
+    headers["X-RapidAPI-Key"] = apiKey;
+    headers["X-RapidAPI-Host"] = apiHost || "judge0-ce.p.rapidapi.com";
   }
 
-  const payload = {
-    clientId,
-    clientSecret,
-    script: code,
-    stdin: inputStr,
-    language,
-    versionIndex,
-  };
+  const submitRes = await request({
+    method: "post",
+    url: `${apiUrl}/submissions?base64_encoded=true&wait=false`,
+    data: {
+      source_code: toBase64(code),
+      language_id: languageId,
+      stdin: toBase64(inputStr),
+    },
+    headers,
+    timeout: REQUEST_TIMEOUT_MS,
+  });
 
-  try {
-    const response = await axios.post("https://api.jdoodle.com/v1/execute", payload, {
-      headers: { "Content-Type": "application/json" },
-      timeout: 30000,
+  const token = submitRes.data?.token;
+  if (!token) throw judgeError("JUDGE_UPSTREAM", "No token received from Judge0");
+
+  // Poll until the submission leaves the queue (status id >= 3) or we time out.
+  const deadline = Date.now() + OVERALL_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(POLL_INTERVAL_MS);
+
+    const resultRes = await request({
+      method: "get",
+      url: `${apiUrl}/submissions/${token}?base64_encoded=true`,
+      headers,
+      timeout: REQUEST_TIMEOUT_MS,
     });
 
-    const data = response.data;
+    const data = resultRes.data;
+    const statusId = data.status?.id;
 
-    // Normalize JDoodle response to match our expected format
-    // JDoodle returns: { output, statusCode, memory, cpuTime }
-    const isSuccess = data.statusCode === 200;
-    const output = data.output || "";
-
-    // Check for common error patterns in output
-    const isCompileError = output.includes("error:") && output.includes(".cpp") ||
-                           output.includes("error:") && output.includes(".java");
-    const isRuntimeError = data.statusCode !== 200;
-
-    return {
-      stdout: (!isCompileError && !isRuntimeError) ? output : "",
-      stderr: isRuntimeError ? output : "",
-      compile_output: isCompileError ? output : "",
-      time: data.cpuTime || "0",
-      memory: data.memory || "0",
-      status: {
-        id: isSuccess && !isCompileError ? 3 : 6,
-        description: isSuccess && !isCompileError ? "Accepted" : "Error",
-      },
-    };
-  } catch (error) {
-    if (error.response) {
-      const msg = error.response.data?.error || JSON.stringify(error.response.data);
-      throw new Error(`JDoodle API Error: ${msg}`);
+    // Status IDs: 1=In Queue, 2=Processing, 3=Accepted, 4+=Error
+    if (statusId && statusId >= 3) {
+      return {
+        stdout: fromBase64(data.stdout),
+        stderr: fromBase64(data.stderr),
+        compile_output: fromBase64(data.compile_output),
+        time: data.time || "0",
+        memory: data.memory || "0",
+        status: {
+          id: statusId,
+          description: data.status?.description || "Unknown",
+        },
+      };
     }
-    throw new Error(`JDoodle Service Error: ${error.message}`);
   }
-};
 
-// Keep getLanguageId for backward compatibility
-const getLanguageId = (language) => {
-  const normalized = language.toLowerCase();
-  if (normalized === "cpp" || normalized === "c++") return 54;
-  if (normalized === "java") return 62;
-  throw new Error(`Unsupported language: ${language}`);
+  throw judgeError("JUDGE_TIMEOUT", "Judge0: execution timed out");
 };
 
 module.exports = {

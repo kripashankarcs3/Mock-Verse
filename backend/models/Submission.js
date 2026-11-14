@@ -2,7 +2,8 @@ const mongoose = require("mongoose");
 
 const submissionSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: false }, // Keeping it optional in case user is not logged in / testing
+    // Firebase UID is a string (e.g. "abc123XYZ"), never an ObjectId.
+    firebaseUID: { type: String, index: true, required: false },
     problemId: { type: mongoose.Schema.Types.ObjectId, ref: "Problem", required: false },
     code: { type: String, required: true },
     language: { type: String, required: true },
@@ -13,5 +14,7 @@ const submissionSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+submissionSchema.index({ firebaseUID: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Submission", submissionSchema);

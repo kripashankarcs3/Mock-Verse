@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const monthNames = [
   "January",
@@ -17,8 +17,9 @@ const monthNames = [
 ];
 
 export default function CustomCalendar() {
-  const [currentDate, setCurrentDate] = useState(new Date(2021, 3, 1));
-  const [selectedDate, setSelectedDate] = useState(new Date(2021, 3, 5));
+  const today = useMemo(() => new Date(), []);
+  const [currentDate, setCurrentDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(today);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -48,21 +49,23 @@ export default function CustomCalendar() {
       <div className="flex items-center justify-between mb-2">
         <button
           onClick={() => setCurrentDate(new Date(year, month - 1, 1))}
-          className="p-1 hover:bg-gray-100 rounded-full text-slate-400"
+          aria-label="Previous month"
+          className="p-1 hover:bg-gray-100 rounded-full text-slate-400 dark:hover:bg-[#313D4A]"
         >
           <ChevronLeft size={14} />
         </button>
         <div className="flex gap-1">
           <div className="px-1.5 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-slate-800 font-bold text-[10px] dark:bg-[#1A222C] dark:border-[#313D4A] dark:text-slate-100">
-            {monthNames[month]} <ChevronDown size={8} className="inline text-blue-500" />
+            {monthNames[month]}
           </div>
           <div className="px-1.5 py-0.5 rounded-md bg-gray-50 border border-gray-100 text-slate-800 font-bold text-[10px] dark:bg-[#1A222C] dark:border-[#313D4A] dark:text-slate-100">
-            {year} <ChevronDown size={8} className="inline text-blue-500" />
+            {year}
           </div>
         </div>
         <button
           onClick={() => setCurrentDate(new Date(year, month + 1, 1))}
-          className="p-1 hover:bg-gray-100 rounded-full text-slate-400"
+          aria-label="Next month"
+          className="p-1 hover:bg-gray-100 rounded-full text-slate-400 dark:hover:bg-[#313D4A]"
         >
           <ChevronRight size={14} />
         </button>
@@ -78,12 +81,23 @@ export default function CustomCalendar() {
         {calendarGrid.map((day, i) => (
           <div
             key={i}
+            role={day.currentMonth ? "button" : undefined}
+            tabIndex={day.currentMonth ? 0 : -1}
+            aria-label={day.currentMonth ? `${monthNames[month]} ${day.val}, ${year}` : undefined}
+            aria-pressed={isSelected(day.val, day.currentMonth)}
+            onKeyDown={(e) => {
+              if (!day.currentMonth) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSelectedDate(new Date(year, month, day.val));
+              }
+            }}
             onClick={() => day.currentMonth && setSelectedDate(new Date(year, month, day.val))}
             className={`h-6 w-full flex items-center justify-center rounded-md text-[10px] font-bold cursor-pointer transition-all ${
               isSelected(day.val, day.currentMonth)
                 ? "bg-blue-600 text-white shadow-md"
                 : !day.currentMonth
-                ? "text-slate-200 dark:text-slate-600"
+                ? "text-slate-400 dark:text-slate-600"
                 : "text-slate-700 hover:bg-gray-50 dark:hover:bg-[#313D4A] dark:text-slate-300"
             }`}
           >

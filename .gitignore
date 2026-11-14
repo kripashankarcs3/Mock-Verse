@@ -1,4 +1,37 @@
-node_modules
-*.log
+# ── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Environment / secrets ───────────────────────────────────────────────────
 .env
+.env.*
+!.env.example
+!**/.env.example
 backend/serviceAccountKey.json
+backend/serviceAccountKey.json.example
+*.pem
+
+# ── Build output ────────────────────────────────────────────────────────────
+dist/
+build/
+frontend/dist/
+backend/dist/
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Local tooling / editor ──────────────────────────────────────────────────
+.vscode/
+.kiro/
+.zencoder/
+.zenflow/
+
+# ── Scratch / accidental files ──────────────────────────────────────────────
+/frontend/esbuild-local.exe
+*.exe
+/frontend/build.json
+/frontend/build.txt
+/frontend/build2.txt
+/frontend/build_error.txt
+/frontend/out.txt
+/frontend/update_app.py
+/et --hard d65e1bf

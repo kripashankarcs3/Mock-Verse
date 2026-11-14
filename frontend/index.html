@@ -10,6 +10,16 @@
       rel="stylesheet"
     />
     <title>Mock-Verse</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a light flash.
+      try {
+        if (localStorage.getItem("mockverse-dark") === "true") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    </script>
     <style>
       html {
         height: 100%;

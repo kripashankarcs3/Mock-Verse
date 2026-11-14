@@ -12,6 +12,17 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+const REQUIRED_KEYS = ["apiKey", "authDomain", "projectId", "appId"];
+const missingKeys = REQUIRED_KEYS.filter((key) => !firebaseConfig[key]);
+
+export const firebaseConfigError = missingKeys.length
+  ? `Firebase is not configured. Missing: ${missingKeys.join(", ")}. Add the VITE_FIREBASE_* values to frontend/.env and restart the dev server.`
+  : null;
+
+if (firebaseConfigError) {
+  console.error(firebaseConfigError);
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);

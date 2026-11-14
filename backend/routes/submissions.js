@@ -1,40 +1,57 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
+const Problem = require("../models/Problem");
 const Submission = require("../models/Submission");
 const { protect } = require("../middleware/auth");
+const { asyncHandler } = require("../utils/asyncHandler");
 
 // GET /api/submissions/user/me
-router.get("/user/me", protect, async (req, res) => {
-  try {
-    const submissions = await Submission.find({ userId: req.user.uid }).sort({ createdAt: -1 });
+router.get(
+  "/user/me",
+  protect,
+  asyncHandler(async (req, res) => {
+    const submissions = await Submission.find({ firebaseUID: req.user.uid })
+      .sort({ createdAt: -1 })
+      .limit(100);
     res.json(submissions);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  })
+);
 
-// GET /api/submissions/user/:userId
-router.get("/user/:userId", protect, async (req, res) => {
-  try {
-    const submissions = await Submission.find({ userId: req.params.userId }).sort({ createdAt: -1 });
-    res.json(submissions);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// GET /api/submissions/user/:userId — self only
+router.get(
+  "/user/:userId",
+  protect,
+  asyncHandler(async (req, res) => {
+    if (req.params.userId !== req.user.uid) {
+      return res.status(403).json({ error: "You can only view your own submissions" });
+    }
+    const submissions = await Submission.find({ firebaseUID: req.user.uid })
+      .sort({ createdAt: -1 })
+      .limit(100);
+    return res.json(submissions);
+  })
+);
 
-// POST /api/submissions - optional create record
-router.post("/", protect, async (req, res) => {
-  const { problemId, code, language, status, executionTime, memoryStats, testcasesPassed } = req.body;
+// POST /api/submissions — create a record for the authenticated user
+router.post(
+  "/",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { problemId, code, language, status, executionTime, memoryStats, testcasesPassed } =
+      req.body;
 
-  if (!language || !status) {
-    return res.status(400).json({ error: "language and status are required." });
-  }
+    if (!language || !status) {
+      return res.status(400).json({ error: "language and status are required." });
+    }
 
-  try {
+    if (problemId && !mongoose.isValidObjectId(problemId)) {
+      return res.status(400).json({ error: "Invalid problemId" });
+    }
+
     const submission = await Submission.create({
-      userId: req.user.uid,
-      problemId,
+      firebaseUID: req.user.uid,
+      problemId: problemId || undefined,
       code,
       language,
       status,
@@ -42,10 +59,9 @@ router.post("/", protect, async (req, res) => {
       memoryStats,
       testcasesPassed,
     });
-    res.status(201).json(submission);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+
+    return res.status(201).json(submission);
+  })
+);
 
 module.exports = router;

@@ -7,31 +7,70 @@ import PracticeWorkspace from "./pages/PracticeWorkspace";
 import Login from "./pages/Login";
 import { useAuth } from "./context/AuthContext";
 
+const DARK_STORAGE_KEY = "mockverse-dark";
+const VIEW_STORAGE_KEY = "mockverse-view";
+const profileStorageKey = (uid) => `mockverse-profile:${uid || "guest"}`;
+
+const buildProfile = (user) => {
+  const name = user?.displayName || (user?.email ? user.email.split("@")[0] : "Guest");
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?";
+  const created = user?.metadata?.creationTime ? new Date(user.metadata.creationTime) : null;
+
+  return {
+    name,
+    role: "Learner",
+    about: "Tell us about yourself — open My Profile to edit.",
+    email: user?.email || "",
+    location: "Not set",
+    memberSince: created
+      ? created.toLocaleDateString(undefined, { month: "short", year: "numeric" })
+      : "—",
+    avatar: user?.photoURL || "",
+    initials,
+    stats: { rating: "—", rank: "—", solved: 0, badges: 0 },
+  };
+};
+
+const loadProfile = (user) => {
+  const base = buildProfile(user);
+  try {
+    const raw = localStorage.getItem(profileStorageKey(user?.uid));
+    return raw ? { ...base, ...JSON.parse(raw) } : base;
+  } catch {
+    return base;
+  }
+};
+
 export default function App() {
-  const { currentUser, loading } = useAuth();
-  const DARK_STORAGE_KEY = "mockverse-dark";
-  const [profile, setProfile] = useState({
-    name: "Alex Johnson",
-    role: "Senior Developer",
-    about: "Passionate about building scalable web applications. Open to learning new technologies and exploring advanced CSS structures.",
-    email: "alex.johnson@example.com",
-    location: "San Francisco, CA",
-    memberSince: "Jan 2023",
-    avatar: "",
-    initials: "AJ",
-    stats: {
-      rating: "2120",
-      rank: "#342",
-      solved: 487,
-      badges: 12,
-    },
-  });
+  const { currentUser, loading, authError } = useAuth();
+  const [profile, setProfile] = useState(() => loadProfile(currentUser));
   const [darkMode, setDarkMode] = useState(() => {
     const stored = localStorage.getItem(DARK_STORAGE_KEY);
     if (stored === "true" || stored === "false") return stored === "true";
     return false;
   });
-  const [view, setView] = useState("dashboard");
+  const [view, setViewState] = useState(() => {
+    try {
+      return sessionStorage.getItem(VIEW_STORAGE_KEY) || "dashboard";
+    } catch {
+      return "dashboard";
+    }
+  });
+  const setView = (next) => {
+    setViewState(next);
+    try {
+      sessionStorage.setItem(VIEW_STORAGE_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -42,6 +81,20 @@ export default function App() {
     localStorage.setItem(DARK_STORAGE_KEY, darkMode);
     document.documentElement.classList.toggle("dark", darkMode);
   }, [darkMode]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    setProfile(loadProfile(currentUser));
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!isProfilePanelOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setIsProfilePanelOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isProfilePanelOpen]);
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -63,13 +116,31 @@ export default function App() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      localStorage.clear();
-      sessionStorage.clear();
+      // Never blanket-clear storage: it would wipe saved problems/code.
+      try {
+        sessionStorage.removeItem(VIEW_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      setViewState("dashboard");
       setIsProfileOpen(false);
+      setIsProfilePanelOpen(false);
     } catch (error) {
       console.error("Logout error", error);
     }
   };
+
+  // Show a clear error instead of a blank screen when auth is misconfigured.
+  if (authError) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-gray-50 dark:bg-[#0f172a] px-6">
+        <div className="max-w-md text-center rounded-2xl border border-rose-200 bg-white p-6 shadow-sm dark:border-rose-900/50 dark:bg-slate-900">
+          <h1 className="text-lg font-bold text-rose-600">Authentication unavailable</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{authError}</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show loading while checking authentication
   if (loading) {
@@ -90,19 +161,25 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col font-sans transition-colors duration-300 bg-gray-50 text-slate-900 dark:bg-[#1A222C] dark:text-white">
-      <header className="fixed top-0 left-0 right-0 z-[100] flex flex-nowrap justify-between items-center px-6 h-[44px] border-b backdrop-blur-md bg-[linear-gradient(90deg,#34475a_0%,#25556d_38%,#1f6b83_68%,#f97316_88%,#fb7185_100%)] text-white shadow-md border-transparent dark:from-[#0b1224] dark:via-[#0f1f2f] dark:to-[#12324a]">
+      <header className="fixed top-0 left-0 right-0 z-[100] flex flex-nowrap justify-between items-center px-6 h-[44px] border-b backdrop-blur-md bg-[linear-gradient(90deg,#34475a_0%,#25556d_38%,#1f6b83_68%,#f97316_88%,#fb7185_100%)] dark:bg-[linear-gradient(90deg,#0b1224_0%,#0f1f2f_38%,#12324a_68%,#1a3a52_88%,#1f4763_100%)] text-white shadow-md border-transparent">
         <div className="flex flex-nowrap items-center gap-2 lg:gap-4 flex-shrink-0">
           <div className="w-8 h-8 bg-gradient-to-br from-[#facc15] via-[#fb7185] to-[#6366f1] rounded-lg flex items-center justify-center shadow-[0_10px_24px_rgba(244,114,182,0.35)] flex-shrink-0">
             <div className="w-4 h-5 bg-white rounded-sm transform -rotate-12"></div>
           </div>
-          <h1 className="text-lg lg:text-xl font-bold tracking-tight cursor-pointer whitespace-nowrap flex-shrink-0 text-white" onClick={() => setView("dashboard")}>
+          <button
+            type="button"
+            onClick={() => setView("dashboard")}
+            className="text-lg lg:text-xl font-bold tracking-tight whitespace-nowrap flex-shrink-0 text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 rounded"
+          >
             Mock-Verse
-          </h1>
+          </button>
         </div>
 
         <div className="flex flex-nowrap items-center gap-2 lg:gap-4 flex-shrink-0">
           <button
             onClick={() => setDarkMode(!darkMode)}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
             className={`p-1.5 rounded-full transition-colors flex-shrink-0 text-white ${
               darkMode ? "hover:bg-white/20 bg-white/10" : "hover:bg-[#fb7185]/20 bg-white/10"
             }`}
@@ -125,10 +202,9 @@ export default function App() {
               </div>
             </button>
 
+            {isProfileOpen && (
             <div
-              className={`absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden z-[120] transition-all duration-200 ease-out origin-top-right ${
-                isProfileOpen ? "opacity-100 scale-100 pointer-events-auto" : "opacity-0 scale-95 pointer-events-none"
-              }`}
+              className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden z-[120] transition-all duration-200 ease-out origin-top-right opacity-100 scale-100"
             >
               <div className="py-2 px-2 flex flex-col gap-1">
                 <button
@@ -173,6 +249,7 @@ export default function App() {
                 </button>
               </div>
             </div>
+            )}
           </div>
         </div>
       </header>
@@ -207,7 +284,7 @@ export default function App() {
 
       {view === "dashboard" && (
         <footer className="py-2 px-4 text-white text-[10px] font-semibold tracking-wider uppercase border-t border-slate-800 bg-[#0c1424] shadow-inner flex-shrink-0 flex items-center justify-center">
-          (c) 2024 Mock-Verse. All rights reserved.
+          (c) {new Date().getFullYear()} Mock-Verse. All rights reserved.
         </footer>
       )}
 
@@ -261,7 +338,23 @@ export default function App() {
                   </button>
                 ) : (
                   <>
-                    <button onClick={() => { setProfile(editForm); setIsEditingProfile(false); }} className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">Save</button>
+                    <button
+                      onClick={() => {
+                        setProfile(editForm);
+                        try {
+                          localStorage.setItem(
+                            profileStorageKey(currentUser?.uid),
+                            JSON.stringify(editForm)
+                          );
+                        } catch {
+                          /* ignore quota errors */
+                        }
+                        setIsEditingProfile(false);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                    >
+                      Save
+                    </button>
                     <button onClick={() => { setEditForm(profile); setIsEditingProfile(false); }} className="px-3 py-1.5 text-xs font-semibold bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-200 rounded-lg transition-colors">Cancel</button>
                   </>
                 )}

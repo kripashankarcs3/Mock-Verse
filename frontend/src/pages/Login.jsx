@@ -40,6 +40,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [isSignup, setIsSignup] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (currentUser) {
     const from = location.state?.from?.pathname || "/";
@@ -63,6 +64,7 @@ export default function Login() {
 
     setError("");
     setMessage("");
+    setIsSubmitting(true);
 
     try {
       let userCredential;
@@ -75,11 +77,15 @@ export default function Login() {
 
       const user = userCredential.user;
       if (user) {
-        await createOrUpdateUser({
-          firebaseUID: user.uid,
-          name: user.displayName || name,
-          email: user.email,
-        });
+        // Best-effort profile sync: a DB outage must not break sign-in.
+        try {
+          await createOrUpdateUser({
+            name: user.displayName || name,
+            email: user.email,
+          });
+        } catch (syncError) {
+          console.warn("Profile sync failed:", syncError?.message);
+        }
       }
 
       setMessage(isSignup ? "Account created successfully!" : "Signed in successfully!");
@@ -93,6 +99,8 @@ export default function Login() {
       } else {
         setError(err.message || "An error occurred. Please try again.");
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -103,11 +111,14 @@ export default function Login() {
       const user = result.user;
 
       if (user) {
-        await createOrUpdateUser({
-          firebaseUID: user.uid,
-          name: user.displayName || "",
-          email: user.email,
-        });
+        try {
+          await createOrUpdateUser({
+            name: user.displayName || "",
+            email: user.email,
+          });
+        } catch (syncError) {
+          console.warn("Profile sync failed:", syncError?.message);
+        }
       }
     } catch (err) {
       setError(err.message || "Google login failed.");
@@ -127,15 +138,15 @@ export default function Login() {
       setMessage("Password reset email sent! Check your inbox.");
     } catch (err) {
       if (err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
-        setError("No account found with this email.");
+        setMessage("If an account exists for that email, a reset link has been sent.");
       } else {
-        setError(err.message);
+        setError("Could not send the reset email. Please try again.");
       }
     }
   };
 
   return (
-    <div className="min-h-screen bg-login-hero flex items-center justify-center px-4 py-4 relative overflow-hidden">
+    <div className="h-screen w-full overflow-y-auto bg-login-hero dark:bg-[#0f172a] flex items-start sm:items-center justify-center px-4 py-6 relative">
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute left-[14%] top-[24%] h-32 w-56 rounded-[28px] border border-slate-200/70 bg-white/18 shadow-[0_8px_28px_rgba(148,163,184,0.12)] backdrop-blur-sm" />
         <div className="absolute left-[18%] top-[32%] h-56 w-36 rounded-[28px] border border-slate-200/70 bg-white/18 shadow-[0_8px_28px_rgba(148,163,184,0.12)] backdrop-blur-sm" />
@@ -155,17 +166,17 @@ export default function Login() {
         <div className="absolute bottom-8 right-8 h-56 w-72 rounded-full bg-sky-100/50 blur-3xl" />
       </div>
 
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-md px-6 py-6 shadow-[0_18px_45px_rgba(15,23,42,0.12)]">
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-md px-6 py-6 shadow-[0_18px_45px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900/90 dark:shadow-none">
         <div className="mx-auto max-w-[340px]">
           <div className="flex items-center justify-center">
             <BrandLogo animate={true} />
           </div>
 
           <div className="mt-3 text-center">
-            <h1 className="text-2xl font-black tracking-tight text-slate-900">
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100">
               {isSignup ? "Sign up" : "Welcome Back, Coder!"}
             </h1>
-            <p className="mt-1 text-xs text-slate-600">
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
               {isSignup ? "Already have an account?" : "Happy to see you back at Mock-Verse."}
               {" "}
               <button
@@ -187,7 +198,7 @@ export default function Login() {
             <input type="password" name="fake-password" autoComplete="current-password" className="hidden" tabIndex={-1} />
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Email</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Email</label>
                 <input
                   type="email"
                   name="mocktantra-email"
@@ -195,13 +206,13 @@ export default function Login() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="Enter your email"
-                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none transition focus:border-blue-500"
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none transition focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
 
               {isSignup && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-slate-700">Name</label>
+                  <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Name</label>
                   <input
                     type="text"
                     name="mocktantra-name"
@@ -209,13 +220,13 @@ export default function Login() {
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     placeholder="Enter your name"
-                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none transition focus:border-blue-500"
+                    className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none transition focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                   />
                 </div>
               )}
 
               <div>
-                <label className="mb-1 block text-xs font-medium text-slate-700">Password</label>
+                <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">Password</label>
                 <input
                   type="password"
                   name="mocktantra-password"
@@ -223,12 +234,12 @@ export default function Login() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Enter your password"
-                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none transition focus:border-blue-500"
+                  className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs outline-none transition focus:border-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
 
               {isSignup && (
-                <label className="flex items-center gap-2 text-xs text-slate-600">
+                <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                   <input
                     type="checkbox"
                     checked={termsAccepted}
@@ -247,7 +258,7 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="text-xs font-medium text-slate-800 underline-offset-2 transition hover:underline focus:outline-none"
+                  className="text-xs font-medium text-slate-800 underline-offset-2 transition hover:underline focus:outline-none dark:text-slate-300"
                 >
                   Forgot Password?
                 </button>
@@ -255,36 +266,39 @@ export default function Login() {
             )}
 
             {error ? (
-              <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
+              <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
                 {error}
               </div>
             ) : null}
 
             {message ? (
-              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
+              <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                 {message}
               </div>
             ) : null}
 
             <button
               type="submit"
-              className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#ff5c3f] via-[#ff4f36] to-[#ff2f15] px-4 text-sm font-bold text-white shadow-lg transition hover:brightness-110"
+              disabled={isSubmitting}
+              className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#ff5c3f] via-[#ff4f36] to-[#ff2f15] px-4 text-sm font-bold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <span className="flex-1 text-center">{isSignup ? "Sign Up" : "Sign In"}</span>
+              <span className="flex-1 text-center">
+                {isSubmitting ? "Please wait..." : isSignup ? "Sign Up" : "Sign In"}
+              </span>
             </button>
           </form>
 
           <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
-            <div className="h-px flex-1 bg-slate-300" />
-            <span>or sign up with</span>
-            <div className="h-px flex-1 bg-slate-300" />
+            <div className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />
+            <span>or continue with</span>
+            <div className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />
           </div>
 
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={handleGoogleLogin}
-              className="flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-sm transition hover:shadow-md"
+              className="flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-sm transition hover:shadow-md dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-[0_4px_10px_rgba(15,23,42,0.12)]">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
@@ -298,7 +312,10 @@ export default function Login() {
             </button>
             <button
               type="button"
-              className="flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shadow-sm transition hover:shadow-md"
+              disabled
+              title="GitHub login coming soon"
+              aria-disabled="true"
+              className="flex h-9 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 opacity-60 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
               <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-[0_4px_10px_rgba(15,23,42,0.12)]">
                 <svg viewBox="0 0 24 24" className="h-5 w-5 fill-slate-900" aria-hidden="true">
@@ -309,7 +326,7 @@ export default function Login() {
             </button>
           </div>
 
-          <p className="mt-6 text-center text-[1.05rem] text-slate-700">
+          <p className="mt-6 text-center text-[1.05rem] text-slate-700 dark:text-slate-300">
             {isSignup ? "Already have an account? " : "Don't have an account? "}
             <button 
               type="button" 

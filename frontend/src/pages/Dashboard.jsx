@@ -3,7 +3,17 @@ import { Clock, CheckCircle2, Zap, Award, Code, FileText, Users } from "lucide-r
 import CustomCalendar from "../components/CustomCalendar";
 
 const CODING_TIMER_STORAGE_KEY = "mockverse-total-coding-timer";
-const INITIAL_CODING_SECONDS = 10 * 60 * 60;
+
+// Accumulated workspace time in seconds. Time only accrues while the dashboard
+// is open — we never count wall-clock time while the tab was closed.
+const loadCodingSeconds = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CODING_TIMER_STORAGE_KEY) || "null");
+    return typeof parsed?.accumulatedSeconds === "number" ? parsed.accumulatedSeconds : 0;
+  } catch {
+    return 0;
+  }
+};
 
 const mainSections = [
   {
@@ -37,72 +47,26 @@ const mainSections = [
 ];
 
 export default function Dashboard({ onOpenPractice, darkMode }) {
-  const [codingSeconds, setCodingSeconds] = useState(() => {
-    if (typeof window === "undefined") return INITIAL_CODING_SECONDS;
-
-    try {
-      const stored = window.localStorage.getItem(CODING_TIMER_STORAGE_KEY);
-      if (!stored) return INITIAL_CODING_SECONDS;
-
-      const parsed = JSON.parse(stored);
-      const baseSeconds =
-        typeof parsed.accumulatedSeconds === "number"
-          ? parsed.accumulatedSeconds
-          : INITIAL_CODING_SECONDS;
-      const lastUpdatedAt =
-        typeof parsed.lastUpdatedAt === "number" ? parsed.lastUpdatedAt : Date.now();
-
-      return baseSeconds + Math.max(0, Math.floor((Date.now() - lastUpdatedAt) / 1000));
-    } catch (err) {
-      console.error("Failed to load coding timer:", err);
-      return INITIAL_CODING_SECONDS;
-    }
-  });
+  const [codingSeconds, setCodingSeconds] = useState(loadCodingSeconds);
 
   useEffect(() => {
-    const tick = () => {
-      try {
-        const stored = window.localStorage.getItem(CODING_TIMER_STORAGE_KEY);
-        const now = Date.now();
-
-        if (!stored) {
-          const initialState = {
-            accumulatedSeconds: INITIAL_CODING_SECONDS,
-            lastUpdatedAt: now,
-          };
-          window.localStorage.setItem(CODING_TIMER_STORAGE_KEY, JSON.stringify(initialState));
-          setCodingSeconds(INITIAL_CODING_SECONDS);
-          return;
-        }
-
-        const parsed = JSON.parse(stored);
-        const accumulatedSeconds =
-          typeof parsed.accumulatedSeconds === "number"
-            ? parsed.accumulatedSeconds
-            : INITIAL_CODING_SECONDS;
-        const lastUpdatedAt =
-          typeof parsed.lastUpdatedAt === "number" ? parsed.lastUpdatedAt : now;
-        const elapsedSeconds = Math.max(0, Math.floor((now - lastUpdatedAt) / 1000));
-        const nextSeconds = accumulatedSeconds + elapsedSeconds;
-
-        window.localStorage.setItem(
-          CODING_TIMER_STORAGE_KEY,
-          JSON.stringify({
-            accumulatedSeconds: nextSeconds,
-            lastUpdatedAt: now,
-          }),
-        );
-
-        setCodingSeconds(nextSeconds);
-      } catch (err) {
-        console.error("Failed to update coding timer:", err);
-      }
-    };
-
-    tick();
-    const intervalId = window.setInterval(tick, 1000);
+    const intervalId = window.setInterval(() => setCodingSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          CODING_TIMER_STORAGE_KEY,
+          JSON.stringify({ accumulatedSeconds: codingSeconds })
+        );
+      } catch {
+        /* ignore quota errors */
+      }
+    }, 2000);
+    return () => window.clearTimeout(id);
+  }, [codingSeconds]);
 
   const formatCodingTime = (totalSeconds) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -117,9 +81,9 @@ export default function Dashboard({ onOpenPractice, darkMode }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {[
               { label: "Total Coding", val: formatCodingTime(codingSeconds), icon: <Clock size={16} className="text-blue-500" /> },
-              { label: "Solved", val: "128", icon: <CheckCircle2 size={16} className="text-emerald-500" /> },
-              { label: "Streak", val: "12 Days", icon: <Zap size={16} className="text-orange-500" /> },
-              { label: "Rank", val: "#1,204", icon: <Award size={16} className="text-purple-500" /> },
+              { label: "Solved", val: "—", icon: <CheckCircle2 size={16} className="text-emerald-500" /> },
+              { label: "Streak", val: "—", icon: <Zap size={16} className="text-orange-500" /> },
+              { label: "Rank", val: "—", icon: <Award size={16} className="text-purple-500" /> },
             ].map((stat, i) => (
               <div
                 key={i}
@@ -134,11 +98,10 @@ export default function Dashboard({ onOpenPractice, darkMode }) {
             ))}
           </div>
           <div className="p-4 rounded-2xl border transition-colors bg-blue-50 border-blue-200 dark:bg-[#24303F] dark:border-[#313D4A]">
-            <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">Boost your streak!</h4>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 mb-2">Solve 2 more problems today to keep your activity alive.</p>
-            <div className="w-full h-1.5 bg-blue-200/60 dark:bg-[#1A222C] rounded-full overflow-hidden">
-              <div className="w-2/3 h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>
-            </div>
+            <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 mb-1">Your activity</h4>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+              Daily practice stats will appear here once submissions are connected to your account.
+            </p>
           </div>
         </div>
         <div className="w-full lg:w-auto flex justify-center">
@@ -165,15 +128,19 @@ export default function Dashboard({ onOpenPractice, darkMode }) {
               <p className="text-[11px] opacity-60 line-clamp-2 leading-snug">{section.desc}</p>
               <button
                 onClick={() => section.id === "practice" && onOpenPractice()}
+                disabled={section.id !== "practice"}
+                title={section.id === "practice" ? "Open the practice workspace" : "Coming soon"}
                 className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
                   section.id === "practice"
                     ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md"
-                    : darkMode
-                    ? "bg-[#313D4A] hover:bg-[#3C4A5A] text-slate-300"
-                    : "bg-gray-50 hover:bg-gray-100 text-slate-600"
+                    : `cursor-not-allowed opacity-70 ${
+                        darkMode
+                          ? "bg-[#313D4A] text-slate-300"
+                          : "bg-gray-50 text-slate-500"
+                      }`
                 }`}
               >
-                Open Workspace
+                {section.id === "practice" ? "Open Workspace" : "Coming soon"}
               </button>
             </div>
           </div>
