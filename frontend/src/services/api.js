@@ -2,7 +2,9 @@ import axios from "axios";
 import { auth } from "./firebase";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5001",
+  // Production (Vercel): same origin, `/api/*` is rewritten to the backend service.
+  // Dev: talk to the local Express server directly.
+  baseURL: import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:5001" : ""),
   // Generous: a single Judge0 run can take a while on the free API.
   timeout: 45_000,
 });

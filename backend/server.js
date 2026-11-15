@@ -57,34 +57,39 @@ app.use("/api/execution", require("./routes/codeRoutes"));
 app.use(notFound);
 app.use(errorHandler);
 
-// ── Start Server ─────────────────────────────────────────────────────────────
-const PORT = Number(process.env.PORT) || 5001;
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Backend chal raha hai: http://localhost:${PORT}`);
-});
-
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`Port ${PORT} already in use. Set PORT in .env to a free port.`);
-  } else {
-    console.error(err);
-  }
-  process.exit(1);
-});
-
-// ── Graceful shutdown ────────────────────────────────────────────────────────
-const shutdown = async (signal) => {
-  console.log(`${signal} received — shutting down...`);
-  server.close(async () => {
-    try {
-      await mongoose.disconnect();
-    } catch {
-      /* ignore */
-    }
-    process.exit(0);
+// ── Start Server (local / long-running hosts only) ───────────────────────────
+// On Vercel the app is exported and invoked as a function — it must not listen.
+if (require.main === module) {
+  const PORT = Number(process.env.PORT) || 5001;
+  const server = app.listen(PORT, () => {
+    console.log(`🚀 Backend chal raha hai: http://localhost:${PORT}`);
   });
-  // Don't hang forever if connections stay open.
-  setTimeout(() => process.exit(0), 10_000).unref();
-};
 
-["SIGINT", "SIGTERM"].forEach((signal) => process.on(signal, () => shutdown(signal)));
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`Port ${PORT} already in use. Set PORT in .env to a free port.`);
+    } else {
+      console.error(err);
+    }
+    process.exit(1);
+  });
+
+  // ── Graceful shutdown ────────────────────────────────────────────────────────
+  const shutdown = async (signal) => {
+    console.log(`${signal} received — shutting down...`);
+    server.close(async () => {
+      try {
+        await mongoose.disconnect();
+      } catch {
+        /* ignore */
+      }
+      process.exit(0);
+    });
+    // Don't hang forever if connections stay open.
+    setTimeout(() => process.exit(0), 10_000).unref();
+  };
+
+  ["SIGINT", "SIGTERM"].forEach((signal) => process.on(signal, () => shutdown(signal)));
+}
+
+module.exports = app;

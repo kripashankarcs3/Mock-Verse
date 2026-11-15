@@ -8,9 +8,23 @@ const serviceAccountPath =
 
 let firebaseInitError = null;
 
-if (!fs.existsSync(serviceAccountPath)) {
+// Prefer an inline JSON env var (needed on Vercel, where no key file exists),
+// then fall back to the key file used in local development.
+const inlineServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+if (inlineServiceAccount) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert(JSON.parse(inlineServiceAccount)),
+    });
+    console.log("✅ Firebase Admin initialized (env)");
+  } catch (error) {
+    firebaseInitError = error.message;
+    console.error("Failed to initialize Firebase Admin from FIREBASE_SERVICE_ACCOUNT_JSON:", error.message);
+  }
+} else if (!fs.existsSync(serviceAccountPath)) {
   firebaseInitError = `Missing Firebase service account at ${serviceAccountPath}`;
-  console.error(`${firebaseInitError}. Copy serviceAccountKey.json.example or set FIREBASE_SERVICE_ACCOUNT_PATH.`);
+  console.error(`${firebaseInitError}. Set FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH.`);
 } else {
   try {
     const serviceAccount = require(serviceAccountPath);
