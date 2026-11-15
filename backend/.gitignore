@@ -1,3 +1,14 @@
+# ── Dependencies ────────────────────────────────────────────────────────────
 node_modules/
-temp/
+
+# ── Environment / secrets ───────────────────────────────────────────────────
 .env
+.env.*
+!.env.example
+serviceAccountKey.json
+!serviceAccountKey.json.example
+*.pem
+
+# ── Logs / temp ─────────────────────────────────────────────────────────────
+temp/
+*.log

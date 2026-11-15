@@ -9,9 +9,8 @@ import {
   MessageSquare,
   Play,
   Send,
-  Bug,
-  List,
   CheckCircle2,
+  XCircle,
   Loader2,
   PlusCircle,
   ClipboardPaste,
@@ -22,13 +21,6 @@ import {
 import ProgressSummary from "../components/ProgressSummary";
 import { runCode } from "../services/api";
 import Editor from "@monaco-editor/react";
-
-const mockTestCases = [
-  { id: 1, input: "6\n3\n1 2 5", expectedOutput: "12\n1 2 5", actualOutput: "12\n1 2 5", passed: true, time: "8 ms" },
-  { id: 2, input: "10\n2\n3 7", expectedOutput: "20\n3 7", actualOutput: "20\n3 7", passed: true, time: "6 ms" },
-  { id: 3, input: "15\n4\n2 5 9 12", expectedOutput: "38\n2 5 9 12", actualOutput: "38\n2 5 9 12", passed: true, time: "7 ms" },
-  { id: 4, input: "8\n3\n1 4 6", expectedOutput: "17\n1 4 6", actualOutput: "17\n1 4 6", passed: true, time: "5 ms" },
-];
 
 const sidebarQuestionsDefault = [
   { id: 1, num: "26.1.1", title: "Rod Cutting", difficulty: "Hard" },
@@ -55,8 +47,6 @@ public class Main {
     }
 }`;
 
-const defaultCode = defaultCodeCpp;
-
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const stripParsedTestCaseSections = (text = "") =>
@@ -75,14 +65,19 @@ const extractSection = (text, label, nextLabels = []) => {
   return match?.[1]?.trim() || "";
 };
 
-const parseAutoParsedCases = (text, idOffset = 0) =>
-  text
-    .split(/(?=Input:\s*)/i)
-    .map((block, index) => {
-      const input = block.match(/Input:\s*([\s\S]*?)(?=\bOutput\b\s*:|$)/i)?.[1]?.trim();
-      const output = block.match(/Output:\s*([\s\S]*?)$/i)?.[1]?.trim();
+const parseAutoParsedCases = (text, idOffset = 0) => {
+  const cleanedText = text
+    .replace(/^\s*(?!Input\s*:|Output\s*:)[A-Za-z][A-Za-z0-9 _-]*:\s*$/gim, "")
+    .trim();
 
-      if (!input || !output) {
+  return Array.from(
+    cleanedText.matchAll(/Input:\s*([\s\S]*?)\s*Output:\s*([\s\S]*?)(?=(?:\n\s*Input:)|$)/gi),
+  )
+    .map((match, index) => {
+      const input = match[1]?.trim();
+      const output = match[2]?.trim();
+
+      if (!input || output == null) {
         return null;
       }
 
@@ -94,6 +89,7 @@ const parseAutoParsedCases = (text, idOffset = 0) =>
       };
     })
     .filter(Boolean);
+};
 
 const renderFormattedDescription = (text) =>
   text.split(/(\*\*.*?\*\*)/).map((part, i) => {
@@ -107,78 +103,158 @@ const renderFormattedDescription = (text) =>
     return <span key={i}>{part}</span>;
   });
 
-const codeTokens = (line) => {
-  const keywords = /\b(int|void|for|if|return|using|namespace|std|include|cout|cin|sort|endl|else|while)\b/g;
-  const types = /\b(INT_MAX)\b/g;
-  const numbers = /\b(\d+)\b/g;
-  const strings = /"([^"\n]*)"/g;
-  const comments = /(\/\/.*)/g;
-  const preprocessor = /(#include[^\n]*)/g;
+const formatDurationMs = (seconds) => {
+  const numericSeconds = Number(seconds);
+  if (!Number.isFinite(numericSeconds) || numericSeconds < 0) {
+    return "? ms";
+  }
 
-  let html = line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const ms = numericSeconds * 1000;
+  if (ms === 0) {
+    return "0 ms";
+  }
+  if (ms < 1) {
+    return "<1 ms";
+  }
+  if (ms < 10) {
+    return `${ms.toFixed(2)} ms`;
+  }
+  if (ms < 100) {
+    return `${ms.toFixed(1)} ms`;
+  }
+  return `${ms.toFixed(0)} ms`;
+};
 
-  const segments = [];
-  let segmentIndex = 0;
-  const mark = (regex, wrap) => {
-    html = html.replace(regex, (match) => {
-      const token = `__TOKEN_${segmentIndex}__`;
-      segments.push(wrap(match));
-      segmentIndex += 1;
-      return token;
-    });
-  };
-
-  mark(preprocessor, (match) => `<span class="code-preprocessor">${match}</span>`);
-  mark(strings, (match) => `<span class="code-string">${match}</span>`);
-  mark(comments, (match) => `<span class="code-comment">${match}</span>`);
-  mark(keywords, (match) => `<span class="code-keyword">${match}</span>`);
-  mark(types, (match) => `<span class="code-type">${match}</span>`);
-  mark(numbers, (match) => `<span class="code-number">${match}</span>`);
-
-  segments.forEach((segment, index) => {
-    html = html.replace(`__TOKEN_${index}__`, segment);
+// ── Monaco editor theme (VS Code style, matches dark UI) ────────────────────
+const MONACO_DARK_THEME = "mockverse-dark";
+const defineMonacoTheme = (monaco) => {
+  monaco.editor.defineTheme(MONACO_DARK_THEME, {
+    base: "vs-dark",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#111111",
+      "editorGutter.background": "#111111",
+      "editor.lineHighlightBackground": "#1b1b1b",
+      "editorLineNumber.foreground": "#5c5c5c",
+      "editorLineNumber.activeForeground": "#d4d4d4",
+      "editorCursor.foreground": "#4ec9b0",
+      "editor.selectionBackground": "#264f78",
+      "editorIndentGuide.background1": "#2a2a2a",
+      "editorIndentGuide.activeBackground1": "#404040",
+    },
   });
+};
 
-  return html;
+// ── localStorage helpers ─────────────────────────────────────────────────────
+const LS_QUESTIONS_KEY = "pw_questions";
+const LS_ACTIVE_KEY    = "pw_activeQuestion";
+const LS_PROBLEMS_KEY  = "pw_problems";   // map: questionId → problemData
+const LS_CODES_KEY     = "pw_codes";      // map: questionId → { "C++": code, "Java": code }
+const LS_LANGUAGE_KEY  = "pw_language";   // last selected language
+
+const loadLS = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch { return fallback; }
+};
+const saveLS = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+};
+
+const defaultProblemData = {
+  num: "26.1.1",
+  title: "Rod Cutting",
+  description: "There is a rod of length N with weak points at A1, A2, ..., AM. You must cut the rod at all weak points.\n\nThe cost of a cut is the length of the sub-rod being cut. Minimize the total cost and return the lexicographically smallest sequence of cuts.\n\n**Constraints:**\nInterval DP solution recommended. Time Complexity: O(M³).",
+  testCases: [
+    { id: 1, input: "6\n3\n1 2 5", output: "12\n1 2 5", explanation: "" },
+    { id: 2, input: "10\n2\n3 7", output: "20\n3 7", explanation: "" }
+  ],
+  hiddenTestCases: []
 };
 
 export default function PracticeWorkspace({ onBack, darkMode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarQuestions, setSidebarQuestions] = useState(sidebarQuestionsDefault);
-  const [activeQuestion, setActiveQuestion] = useState(1);
-  const [language, setLanguage] = useState("C++");
+
+  // ── Persisted state ──────────────────────────────────────────────────────
+  const [sidebarQuestions, setSidebarQuestionsRaw] = useState(() =>
+    loadLS(LS_QUESTIONS_KEY, sidebarQuestionsDefault)
+  );
+  const [activeQuestion, setActiveQuestionRaw] = useState(() =>
+    loadLS(LS_ACTIVE_KEY, sidebarQuestionsDefault[0].id)
+  );
+  const [allProblems, setAllProblemsRaw] = useState(() =>
+    loadLS(LS_PROBLEMS_KEY, {})
+  );
+  const [allCodes, setAllCodesRaw] = useState(() =>
+    loadLS(LS_CODES_KEY, {})
+  );
+
+  // Derived: current question's problemData and code
+  const [language, setLanguageRaw] = useState(() => loadLS(LS_LANGUAGE_KEY, "C++"));
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const [code, setCode] = useState(defaultCode);
-  const [bottomTab, setBottomTab] = useState("terminal");
-  const [isEditing, setIsEditing] = useState(false);
-  const [problemData, setProblemData] = useState({
-    num: "26.1.1",
-    title: "Rod Cutting",
-    description: "There is a rod of length N with weak points at A1, A2, ..., AM. You must cut the rod at all weak points.\n\nThe cost of a cut is the length of the sub-rod being cut. Minimize the total cost and return the lexicographically smallest sequence of cuts.\n\n**Constraints:**\nInterval DP solution recommended. Time Complexity: O(M³).",
-    testCases: [
-      { id: 1, input: "6\n3\n1 2 5", output: "12\n1 2 5", explanation: "" },
-      { id: 2, input: "10\n2\n3 7", output: "20\n3 7", explanation: "" }
-    ],
-    hiddenTestCases: []
-  });
+
+  // Get problemData for active question (null when no question exists)
+  const activeQuestionMeta = sidebarQuestions.find((q) => q.id === activeQuestion) || null;
+  const problemData = activeQuestionMeta
+    ? (allProblems[activeQuestion] || defaultProblemData)
+    : null;
+  const code =
+    allCodes[activeQuestion]?.[language] ??
+    (language === "Java" ? defaultCodeJava : defaultCodeCpp);
+
+  // Setters that persist (code/problem writes are debounced for smooth typing)
+  const setSidebarQuestions = (val) => {
+    const next = typeof val === "function" ? val(sidebarQuestions) : val;
+    setSidebarQuestionsRaw(next);
+    saveLS(LS_QUESTIONS_KEY, next);
+  };
+  const setActiveQuestion = (id) => {
+    setActiveQuestionRaw(id);
+    saveLS(LS_ACTIVE_KEY, id);
+  };
+  const setProblemData = (val) => {
+    setAllProblemsRaw(prev => {
+      const current = prev[activeQuestion] || defaultProblemData;
+      const next = typeof val === "function" ? val(current) : val;
+      return { ...prev, [activeQuestion]: next };
+    });
+  };
+  const setCode = (val) => {
+    setAllCodesRaw(prev => {
+      const currentQ = prev[activeQuestion] || {};
+      return { ...prev, [activeQuestion]: { ...currentQ, [language]: val } };
+    });
+  };
+  const setLanguage = (lang) => {
+    setLanguageRaw(lang);
+    saveLS(LS_LANGUAGE_KEY, lang);
+  };
+  // ────────────────────────────────────────────────────────────────────────
   const [testCasesExpanded, setTestCasesExpanded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [submitState, setSubmitState] = useState("idle");
   const [testResults, setTestResults] = useState([]);
-  const [expandedCase, setExpandedCase] = useState(1);
   const [terminalOutput, setTerminalOutput] = useState("");
-  const [showResultsPanel, setShowResultsPanel] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [problemCollapsed, setProblemCollapsed] = useState(false);
   const [splitPercent, setSplitPercent] = useState(45);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isJudging, setIsJudging] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches
+  );
   const editorRef = useRef(null);
-  const highlightRef = useRef(null);
   const containerRef = useRef(null);
+  const activeQuestionRef = useRef(activeQuestion);
+  const runTokenRef = useRef(0);
+  const allCodesRef = useRef(allCodes);
+  const allProblemsRef = useRef(allProblems);
   const uiFontFamily = '"Aptos", "Segoe UI Variable", "Segoe UI", "Trebuchet MS", sans-serif';
-
-  const codeLines = code.split("\n");
 
   const formatTime = (secs) => {
     const m = String(Math.floor(secs / 60)).padStart(2, "0");
@@ -190,7 +266,6 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
     setIsSubmitted(false);
     setSubmitState("idle");
     setTestResults([]);
-    setBottomTab("terminal");
   };
 
   useEffect(() => {
@@ -199,50 +274,126 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
     return () => clearInterval(id);
   }, [timerRunning]);
 
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onChange = (event) => setIsNarrow(event.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  // Keep refs in sync so async judges can detect stale work.
+  useEffect(() => {
+    activeQuestionRef.current = activeQuestion;
+  }, [activeQuestion]);
+  useEffect(() => {
+    allCodesRef.current = allCodes;
+  }, [allCodes]);
+  useEffect(() => {
+    allProblemsRef.current = allProblems;
+  }, [allProblems]);
+
+  // Debounced persistence: avoids a full localStorage write on every keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => saveLS(LS_CODES_KEY, allCodes), 400);
+    return () => clearTimeout(id);
+  }, [allCodes]);
+  useEffect(() => {
+    const id = setTimeout(() => saveLS(LS_PROBLEMS_KEY, allProblems), 400);
+    return () => clearTimeout(id);
+  }, [allProblems]);
+  // Flush pending writes when the workspace unmounts.
+  useEffect(
+    () => () => {
+      saveLS(LS_CODES_KEY, allCodesRef.current);
+      saveLS(LS_PROBLEMS_KEY, allProblemsRef.current);
+    },
+    []
+  );
+
   const handleStartTimerOnType = () => {
     if (!timerRunning) setTimerRunning(true);
   };
 
-  const handleScroll = () => {
-    if (editorRef.current && highlightRef.current) {
-      highlightRef.current.scrollTop = editorRef.current.scrollTop;
-      highlightRef.current.scrollLeft = editorRef.current.scrollLeft;
-    }
-  };
-
   const handleRun = async () => {
-    setBottomTab("terminal");
-    setTerminalOutput("Compiling...\n");
-    const sampleInput = problemData.testCases[0]?.input || "";
+    if (isRunning || !problemData) return;
+
+    const token = ++runTokenRef.current;
+    const questionAtStart = activeQuestion;
+    setIsRunning(true);
+    setTerminalOutput("Running...\n");
+
     try {
-      const result = await runCode({ code, language: language === "C++" ? "cpp" : language.toLowerCase(), input: sampleInput });
-      const output = result.stdout || result.stderr || result.compile_output || "No output";
-      const status = result.status || "Unknown";
-      setTerminalOutput(
-        `Status: ${status}\n\nOutput:\n${output}\n\nExecution time: ${result.time}s  Memory: ${result.memory} KB`
-      );
+      const result = await runCode({
+        code,
+        language: language === "C++" ? "cpp" : language.toLowerCase(),
+        input: problemData.testCases?.[0]?.input || "",
+      });
+
+      if (runTokenRef.current !== token || activeQuestionRef.current !== questionAtStart) return;
+
+      const lines = [`Status: ${result.status || "Unknown"}`];
+      lines.push(`Output:\n${result.stdout || "(empty)"}`);
+      if (result.compile_output) lines.push(`Compiler:\n${result.compile_output}`);
+      if (result.stderr) lines.push(`Stderr:\n${result.stderr}`);
+      lines.push(`Execution time: ${result.time}s  Memory: ${result.memory} KB`);
+      setTerminalOutput(lines.join("\n\n"));
     } catch (err) {
+      if (runTokenRef.current !== token || activeQuestionRef.current !== questionAtStart) return;
       setTerminalOutput(`Error: ${err?.response?.data?.error || err.message}`);
+    } finally {
+      if (runTokenRef.current === token) setIsRunning(false);
     }
   };
 
   const handleSubmit = async () => {
+    if (isJudging || !problemData) return;
+
+    const allTestCases = [
+      ...(problemData.testCases || []).map(tc => ({ ...tc, hidden: false })),
+      ...(problemData.hiddenTestCases || []).map(tc => ({ ...tc, hidden: true })),
+    ];
+
+    // A blank case compares "" === "" and would report a false "Accepted".
+    const validTestCases = allTestCases.filter(
+      (tc) =>
+        String(tc.input ?? "").trim() !== "" &&
+        String(tc.output ?? tc.expectedOutput ?? "").trim() !== ""
+    );
+    const skippedCount = allTestCases.length - validTestCases.length;
+
+    if (validTestCases.length === 0) {
+      setTerminalOutput(
+        "❌ Add at least one test case with both input and expected output before submitting."
+      );
+      setIsSubmitted(false);
+      setSubmitState("idle");
+      return;
+    }
+
+    const token = ++runTokenRef.current;
+    const questionAtStart = activeQuestion;
+    setIsJudging(true);
     setSubmitState("loading");
-    setShowResultsPanel(true);
-    setBottomTab("testcases");
+    setTestResults([]);
     setIsSubmitted(true);
+    setTerminalOutput(
+      skippedCount > 0 ? `Skipped ${skippedCount} incomplete test case(s).` : ""
+    );
+
     try {
       const results = [];
-      // Run shown + hidden test cases both
-      const allTestCases = [
-        ...(problemData.testCases || []).map(tc => ({ ...tc, hidden: false })),
-        ...(problemData.hiddenTestCases || []).map(tc => ({ ...tc, hidden: true })),
-      ];
-      for (const tc of allTestCases) {
-        const result = await runCode({ code, language: language === "C++" ? "cpp" : language.toLowerCase(), input: tc.input });
+      for (const tc of validTestCases) {
+        if (runTokenRef.current !== token || activeQuestionRef.current !== questionAtStart) return;
+
+        const result = await runCode({
+          code,
+          language: language === "C++" ? "cpp" : language.toLowerCase(),
+          input: tc.input,
+        });
         const actual = result.stdout ? result.stdout.trim() : "";
-        const expected = (tc.output || tc.expectedOutput || "").trim();
+        const expected = String(tc.output ?? tc.expectedOutput ?? "").trim();
         const passed = actual === expected && result.status === "Accepted";
+        const durationSeconds = Number.parseFloat(result.time || "0");
         results.push({
           id: tc.id,
           input: tc.hidden ? "🔒 Hidden" : tc.input,
@@ -250,17 +401,23 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
           actualOutput: tc.hidden ? (passed ? "✓ Correct" : "✗ Wrong") : actual,
           passed,
           hidden: tc.hidden,
-          time: `${result.time ? (parseFloat(result.time) * 1000).toFixed(0) : "?"} ms`,
+          durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : 0,
+          timeLabel: formatDurationMs(durationSeconds),
           error: tc.hidden ? null : (result.stderr || result.compile_output || null),
         });
       }
+
+      if (runTokenRef.current !== token || activeQuestionRef.current !== questionAtStart) return;
       setTestResults(results);
       setSubmitState("results");
+      setTimerRunning(false);
     } catch (err) {
+      if (runTokenRef.current !== token || activeQuestionRef.current !== questionAtStart) return;
       setTerminalOutput(`Submission error: ${err?.response?.data?.error || err.message}`);
       setSubmitState("idle");
-      setBottomTab("terminal");
       setIsSubmitted(false);
+    } finally {
+      if (runTokenRef.current === token) setIsJudging(false);
     }
   };
 
@@ -357,13 +514,24 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
 
       const nextDescription = stripParsedTestCaseSections(descriptionParts.join("\n\n"));
 
+      const finalTitle = newTitle || null;
+
       setProblemData((prev) => ({
         ...prev,
-        title: newTitle || prev.title,
+        title: finalTitle || prev.title,
         description: nextDescription || stripParsedTestCaseSections(prev.description),
         testCases: newShownTestCases.length > 0 ? newShownTestCases : prev.testCases,
         hiddenTestCases: newHiddenTestCases.length > 0 ? newHiddenTestCases : prev.hiddenTestCases,
       }));
+
+      // Sidebar list mein bhi title update karo
+      if (finalTitle) {
+        setSidebarQuestionsRaw(prev => {
+          const updated = prev.map(q => q.id === activeQuestion ? { ...q, title: finalTitle } : q);
+          saveLS(LS_QUESTIONS_KEY, updated);
+          return updated;
+        });
+      }
 
       if (newShownTestCases.length > 0) {
         setTestCasesExpanded(true);
@@ -403,6 +571,8 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
     setSplitPercent(splitPercentRef.current);
     document.body.style.userSelect = "";
     document.body.style.cursor = "";
+    // Re-measure Monaco after the split is resized
+    requestAnimationFrame(() => editorRef.current?.layout());
   }, [isDragging]);
 
   useEffect(() => {
@@ -417,22 +587,12 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
 
   return (
     <div
-      className={`flex flex-col h-[calc(100vh-44px)] bg-gray-100 text-slate-900 dark:bg-black dark:text-slate-100 overflow-hidden relative ${isDragging ? "select-none cursor-col-resize" : ""
+      className={`flex flex-col h-[calc(100vh-64px)] bg-gray-100 text-slate-900 dark:bg-black dark:text-slate-100 overflow-hidden relative ${isDragging ? "select-none cursor-col-resize" : ""
         }`}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
     >
       <style>{`
-        .code-keyword { color: #8b1db0; font-weight: 500; }
-        .code-string { color: #df5a1c; }
-        .code-comment { color: #98a2b3; font-style: italic; }
-        .code-number { color: #2f855a; }
-        .code-preprocessor { color: #e85d04; font-weight: 500; }
-        .code-type { color: #059669; }
-        .code-highlight { position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;overflow:auto;white-space:pre;font-family:monospace;font-size:13px;line-height:21px;padding:8px 8px 8px 0;margin:0; }
-        .code-textarea { position:relative;z-index:2;background:transparent;color:transparent;white-space:pre;font-family:monospace;font-size:13px;line-height:21px;resize:none;outline:none;border:none;width:100%;height:100%;overflow:auto;padding:8px 8px 8px 0; }
-        .code-textarea.dark { caret-color:#fff; }
-        .code-textarea.light { caret-color:#2d3748; }
         .spin { animation:spin 1s linear infinite; }
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
         .sidebar-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:199; backdrop-filter:blur(1px); }
@@ -453,21 +613,42 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
           <div className="px-3 pt-3 pb-2 shrink-0">
             <button
               onClick={() => {
+                const newId = Date.now();
+                // Use the last numeric segment (26.1.5 → 6), not every digit.
+                const maxNum = sidebarQuestions.reduce((max, q) => {
+                  const n = parseInt(String(q.num ?? "").split(".").pop(), 10);
+                  return Number.isFinite(n) && n > max ? n : max;
+                }, 0);
+                const newNum = `Q${maxNum + 1}`;
                 const newQ = {
-                  id: Date.now(),
-                  num: `Q${sidebarQuestions.length + 1}`,
+                  id: newId,
+                  num: newNum,
                   title: "New Question",
                   difficulty: "Medium",
                 };
-                setSidebarQuestions(prev => [newQ, ...prev]);
-                setActiveQuestion(newQ.id);
-                setProblemData({
+                const newProblem = {
                   num: newQ.num,
                   title: newQ.title,
                   description: "",
                   testCases: [{ id: Date.now(), input: "", output: "", explanation: "" }],
                   hiddenTestCases: [],
+                };
+                // Neeche add karo (append)
+                setSidebarQuestions(prev => [...prev, newQ]);
+                // Save its problemData
+                setAllProblemsRaw(prev => {
+                  const updated = { ...prev, [newId]: newProblem };
+                  saveLS(LS_PROBLEMS_KEY, updated);
+                  return updated;
                 });
+                // Set active question (code will auto-load as default)
+                setActiveQuestion(newId);
+                setTimerSeconds(0);
+                setTimerRunning(false);
+                setSubmitState("idle");
+                setTestResults([]);
+                setIsSubmitted(false);
+                setTerminalOutput("");
                 setIsEditing(true);
                 setSidebarOpen(false);
               }}
@@ -487,6 +668,13 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                   key={q.id}
                   onClick={() => {
                     setActiveQuestion(q.id);
+                    setTimerSeconds(0);
+                    setTimerRunning(false);
+                    setSubmitState("idle");
+                    setTestResults([]);
+                    setIsSubmitted(false);
+                    setTerminalOutput("");
+                    setIsEditing(false);
                     setSidebarOpen(false);
                   }}
                   className={`p-3 rounded-xl mb-1 cursor-pointer transition-colors group ${activeQuestion === q.id
@@ -511,10 +699,31 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!window.confirm(`"${q.title}" delete karna chahte ho?`)) return;
-                          setSidebarQuestions(prev => prev.filter(x => x.id !== q.id));
+
+                          const remaining = sidebarQuestions.filter(x => x.id !== q.id);
+                          setSidebarQuestionsRaw(remaining);
+                          saveLS(LS_QUESTIONS_KEY, remaining);
+
+                          // Remove orphaned problem/code records for this question.
+                          const nextProblems = { ...allProblems };
+                          delete nextProblems[q.id];
+                          setAllProblemsRaw(nextProblems);
+                          saveLS(LS_PROBLEMS_KEY, nextProblems);
+
+                          const nextCodes = { ...allCodes };
+                          delete nextCodes[q.id];
+                          setAllCodesRaw(nextCodes);
+                          saveLS(LS_CODES_KEY, nextCodes);
+
                           if (activeQuestion === q.id) {
-                            const remaining = sidebarQuestions.filter(x => x.id !== q.id);
-                            if (remaining.length > 0) setActiveQuestion(remaining[0].id);
+                            setActiveQuestion(remaining[0]?.id ?? null);
+                            setTimerSeconds(0);
+                            setTimerRunning(false);
+                            setSubmitState("idle");
+                            setTestResults([]);
+                            setIsSubmitted(false);
+                            setTerminalOutput("");
+                            setIsEditing(false);
                           }
                         }}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-400 hover:text-red-600 transition-all"
@@ -531,7 +740,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
         </div>
       </aside>
 
-      <div className="flex flex-1 overflow-hidden border-t border-white" ref={containerRef} style={{ fontFamily: uiFontFamily }}>
+      <div className={`flex flex-1 overflow-hidden border-t border-white ${isNarrow ? "flex-col" : "flex-row"}`} ref={containerRef} style={{ fontFamily: uiFontFamily }}>
 
         {/* Questions Sidebar Toggle */}
         {!problemCollapsed && (
@@ -551,8 +760,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
           className={`bg-[#D9DDE1] border-r border-[#D9DDE1] flex flex-col overflow-hidden rounded-t-lg relative dark:bg-black dark:border-slate-800/80 ${problemCollapsed ? "pointer-events-none" : ""} ${isDragging ? "" : "transition-[width] duration-150"
             }`}
           style={{
-            width: problemCollapsed ? 0 : `${splitPercent}%`,
-            minWidth: problemCollapsed ? 0 : "300px",
+            width: problemCollapsed ? 0 : isNarrow ? "100%" : `${splitPercent}%`,
+            minWidth: problemCollapsed ? 0 : isNarrow ? 0 : "300px",
+            height: isNarrow && !problemCollapsed ? "50%" : undefined,
           }}
         >
           <div className="mt-px h-10 bg-[#2A3439] text-slate-100 flex items-center px-4 justify-between rounded-t-lg sticky top-0 z-20 border-b backdrop-blur-md border-[#2A3439] shadow-sm dark:bg-black/80 dark:text-slate-200 dark:border-slate-800 transition-colors">
@@ -564,16 +774,26 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               >
                 <ArrowLeft size={16} />
               </button>
-              {isEditing ? (
+              {isEditing && problemData ? (
                 <input
                   type="text"
                   value={problemData.title}
-                  onChange={(e) => setProblemData({ ...problemData, title: e.target.value })}
+                  onChange={(e) => {
+                    const newTitle = e.target.value;
+                    setProblemData({ ...problemData, title: newTitle });
+                    setSidebarQuestionsRaw(prev => {
+                      const updated = prev.map(q => q.id === activeQuestion ? { ...q, title: newTitle } : q);
+                      saveLS(LS_QUESTIONS_KEY, updated);
+                      return updated;
+                    });
+                  }}
                   className="bg-transparent border-b border-slate-300 outline-none text-sm font-bold tracking-[0.01em] text-slate-100 w-48"
                   placeholder="Enter Question Title"
                 />
               ) : (
-                <span className="text-[15px] font-bold tracking-[0.01em] text-slate-100">{problemData.num}. {problemData.title}</span>
+                <span className="text-[15px] font-bold tracking-[0.01em] text-slate-100">
+                  {problemData ? `${problemData.num}. ${problemData.title}` : "No question selected"}
+                </span>
               )}
             </div>
             <div className="flex items-center gap-3 text-slate-200 dark:text-slate-200">
@@ -591,8 +811,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                 </button>
               )}
               <button
-                onClick={() => setIsEditing(!isEditing)}
-                className={`p-1 rounded transition-colors ${isEditing ? 'bg-white/15 text-blue-200 dark:bg-blue-900/40 dark:text-blue-400' : 'hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200'}`}
+                onClick={() => problemData && setIsEditing(!isEditing)}
+                disabled={!problemData}
+                className={`p-1 rounded transition-colors disabled:opacity-40 ${isEditing ? 'bg-white/15 text-blue-200 dark:bg-blue-900/40 dark:text-blue-400' : 'hover:bg-white/10 text-slate-200 dark:hover:bg-slate-700 dark:text-slate-200'}`}
                 title={isEditing ? "Save Changes" : "Edit Problem"}
               >
                 {isEditing ? <CheckCircle2 size={16} /> : <Edit3 size={16} />}
@@ -608,8 +829,10 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-[#D9DDE1] px-6 pt-6 pb-2 text-[15.5px] leading-8 text-black dark:text-slate-300">
+          <div className="flex-1 overflow-y-auto bg-[#D9DDE1] px-6 pt-6 pb-2 text-[15.5px] leading-8 text-black dark:bg-black dark:text-slate-300">
             <div className="min-h-full flex flex-col">
+              {problemData ? (
+                <>
               {/* Description Section */}
               <div className="space-y-4">
                 {isEditing ? (
@@ -621,12 +844,12 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                       style={{ fontFamily: uiFontFamily }}
                       placeholder="Enter Problem Description... (Use **text** for bold)"
                     />
-                    <div className="rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm">
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                    <div className="rounded-xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/60">
+                      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
                         Preview
                       </p>
                       <div
-                        className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black"
+                        className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black dark:text-slate-300"
                         style={{ fontFamily: uiFontFamily }}
                       >
                         {renderFormattedDescription(problemData.description)}
@@ -634,7 +857,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                     </div>
                   </>
                 ) : (
-                  <div className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black" style={{ fontFamily: uiFontFamily }}>
+                  <div className="whitespace-pre-wrap leading-8 text-[15.5px] font-[450] tracking-[0.005em] text-black dark:text-slate-300" style={{ fontFamily: uiFontFamily }}>
                     {renderFormattedDescription(problemData.description)}
                   </div>
                 )}
@@ -690,8 +913,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                               <textarea
                                 value={tc.input}
                                 onChange={(e) => {
-                                  const newTc = [...problemData.testCases];
-                                  newTc[idx].input = e.target.value;
+                                  const newTc = problemData.testCases.map((c, i) =>
+                                    i === idx ? { ...c, input: e.target.value } : c
+                                  );
                                   setProblemData({ ...problemData, testCases: newTc });
                                 }}
                                 className="w-full h-16 p-2 rounded-lg bg-cyan-50/50 dark:bg-cyan-900/10 border border-cyan-100 dark:border-cyan-900 font-mono text-xs outline-none focus:border-cyan-400 text-cyan-900 dark:text-cyan-100"
@@ -701,8 +925,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                               <textarea
                                 value={tc.output}
                                 onChange={(e) => {
-                                  const newTc = [...problemData.testCases];
-                                  newTc[idx].output = e.target.value;
+                                  const newTc = problemData.testCases.map((c, i) =>
+                                    i === idx ? { ...c, output: e.target.value } : c
+                                  );
                                   setProblemData({ ...problemData, testCases: newTc });
                                 }}
                                 className="w-full h-16 p-2 rounded-lg bg-gray-50 dark:bg-[#1e293b] border border-gray-200 dark:border-slate-700 font-mono text-xs outline-none focus:border-blue-400 text-slate-700 dark:text-slate-300"
@@ -808,8 +1033,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                             <textarea
                               value={tc.input}
                               onChange={(e) => {
-                                const newTc = [...(problemData.hiddenTestCases || [])];
-                                newTc[idx].input = e.target.value;
+                                const newTc = (problemData.hiddenTestCases || []).map((c, i) =>
+                                  i === idx ? { ...c, input: e.target.value } : c
+                                );
                                 setProblemData({ ...problemData, hiddenTestCases: newTc });
                               }}
                               className="w-full h-14 p-2 rounded-lg bg-white dark:bg-black border border-orange-200 dark:border-orange-900 font-mono text-xs outline-none focus:border-orange-400 text-slate-800 dark:text-slate-200"
@@ -819,8 +1045,9 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                             <textarea
                               value={tc.output}
                               onChange={(e) => {
-                                const newTc = [...(problemData.hiddenTestCases || [])];
-                                newTc[idx].output = e.target.value;
+                                const newTc = (problemData.hiddenTestCases || []).map((c, i) =>
+                                  i === idx ? { ...c, output: e.target.value } : c
+                                );
                                 setProblemData({ ...problemData, hiddenTestCases: newTc });
                               }}
                               className="w-full h-14 p-2 rounded-lg bg-white dark:bg-black border border-orange-200 dark:border-orange-900 font-mono text-xs outline-none focus:border-orange-400 text-slate-800 dark:text-slate-200"
@@ -853,12 +1080,23 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                   </div>
                 )}
               </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center py-20 text-center">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-600 dark:text-slate-300">No question selected</p>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                      Add a question from the sidebar to start practicing.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
         </div>
 
-        {!problemCollapsed && (
+        {!problemCollapsed && !isNarrow && (
           <div
             onMouseDown={handleDividerMouseDown}
             className={`cursor-col-resize flex items-center justify-center transition-colors ${isDragging ? "bg-[#2A3439]/80" : "bg-[#2A3439]/60 hover:bg-[#2A3439]/90"}`}
@@ -873,8 +1111,8 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
           className={`flex-1 flex flex-col overflow-hidden rounded-t-lg relative border border-transparent dark:border-slate-800 ${darkMode ? 'bg-black' : 'bg-[#F3F5F8]'} ${isDragging ? "" : "transition-[width] duration-150"
             }`}
           style={{
-            width: problemCollapsed ? "100%" : `${100 - splitPercent}%`,
-            minWidth: "300px",
+            width: isNarrow || problemCollapsed ? "100%" : `${100 - splitPercent}%`,
+            minWidth: isNarrow ? 0 : "300px",
           }}
         >
           <div className={`h-10 border-b flex items-center px-3 justify-between sticky top-0 z-20 rounded-t-lg shadow-sm transition-colors ${darkMode ? 'bg-[#111] border-slate-800' : 'bg-[#2A3439] border-[#2A3439]'
@@ -910,8 +1148,6 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                         onClick={() => { 
                           setLanguage(lang); 
                           setLangDropdownOpen(false);
-                          // Change default code when language switches
-                          setCode(lang === "Java" ? defaultCodeJava : defaultCodeCpp);
                         }}
                         className={`w-full text-left px-3 py-2 text-[11px] font-bold transition-colors ${language === lang ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-[#2a2a2a]'}`}
                       >
@@ -925,15 +1161,21 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRun}
-                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded border transition-all active:scale-95 shadow-sm ${darkMode ? 'bg-[#222] hover:bg-[#333] text-white border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'
+                disabled={isRunning || !problemData}
+                className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded border transition-all active:scale-95 shadow-sm disabled:opacity-50 ${darkMode ? 'bg-[#222] hover:bg-[#333] text-white border-[#444]' : 'bg-white/10 hover:bg-white/15 text-slate-100 border-white/15'
                   }`}
               >
-                <Play size={10} className="text-emerald-300" /> Run
+                {isRunning ? (
+                  <Loader2 size={10} className="animate-spin text-emerald-300" />
+                ) : (
+                  <Play size={10} className="text-emerald-300" />
+                )}{" "}
+                {isRunning ? "Running" : "Run"}
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={submitState === "loading"}
-                className={`flex items-center gap-1.5 text-white text-[10px] font-bold px-4 py-1 rounded shadow-md active:scale-95 transition-all ${submitState === "loading" ? "bg-emerald-600/70" : "bg-emerald-500 hover:bg-emerald-600"
+                disabled={submitState === "loading" || !problemData}
+                className={`flex items-center gap-1.5 text-white text-[10px] font-bold px-4 py-1 rounded shadow-md active:scale-95 transition-all disabled:opacity-60 ${submitState === "loading" ? "bg-emerald-600/70" : "bg-emerald-500 hover:bg-emerald-600"
                   }`}
               >
                 {submitState === "loading" ? "Judging..." : <><Send size={10} /> Submit</>}
@@ -946,27 +1188,73 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               <Editor
                 height="100%"
                 width="100%"
+                path={`mockverse/q-${activeQuestion ?? "none"}-${language === "C++" ? "cpp" : "java"}`}
                 language={language.toLowerCase() === "c++" ? "cpp" : language.toLowerCase()}
-                theme={darkMode ? "vs-dark" : "light"}
+                theme={darkMode ? MONACO_DARK_THEME : "light"}
+                beforeMount={defineMonacoTheme}
+                onMount={(editor) => {
+                  editorRef.current = editor;
+                }}
                 value={code}
                 onChange={(value) => {
                   setCode(value || "");
                   handleStartTimerOnType();
                 }}
+                loading={<div className="h-full w-full bg-[#111]" />}
                 options={{
                   minimap: { enabled: false },
                   fontSize: 14,
-                  fontFamily: 'Consolas, "Courier New", monospace',
-                  padding: { top: 16 },
-                  scrollBeyondLastLine: false,
+                  lineHeight: 22,
+                  fontFamily: '"JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace',
+                  fontLigatures: true,
+                  padding: { top: 14, bottom: 14 },
+                  lineNumbers: "on",
+                  lineNumbersMinChars: 3,
+                  glyphMargin: false,
+                  folding: true,
+                  autoIndent: "full",
+                  formatOnPaste: true,
+                  formatOnType: true,
                   matchBrackets: "always",
                   autoClosingBrackets: "always",
-                  autoIndent: "full",
-                  lineNumbers: "on"
+                  autoClosingQuotes: "always",
+                  bracketPairColorization: { enabled: true },
+                  tabSize: 4,
+                  wordWrap: "off",
+                  scrollBeyondLastLine: false,
+                  smoothScrolling: true,
+                  cursorBlinking: "smooth",
+                  cursorSmoothCaretAnimation: "on",
+                  renderLineHighlight: "line",
+                  scrollbar: {
+                    verticalScrollbarSize: 10,
+                    horizontalScrollbarSize: 10,
+                  },
+                  automaticLayout: true,
                 }}
               />
             </div>
           </div>
+
+          {terminalOutput && (
+            <div className={`flex-none border-t ${darkMode ? "border-[#3e3e42] bg-[#0b0b0b]" : "border-gray-200 bg-[#1e1e1e]"} text-slate-200`}>
+              <div className="flex items-center justify-between px-3 py-1 border-b border-white/10">
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                  Terminal
+                </span>
+                <button
+                  onClick={() => setTerminalOutput("")}
+                  className="text-[10px] text-slate-400 hover:text-slate-200"
+                  title="Clear terminal"
+                >
+                  Clear
+                </button>
+              </div>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-[12px] leading-5">
+                {terminalOutput}
+              </pre>
+            </div>
+          )}
 
           <div
             className={`border-t flex flex-col transition-all duration-300 overflow-hidden ${isSubmitted ? "h-96" : "h-0 border-transparent"
@@ -977,31 +1265,32 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
               <div className="flex-1 bg-white text-slate-800 overflow-y-auto p-4 relative dark:bg-slate-800 dark:text-slate-100">
                 <button
                   onClick={handleCloseResults}
-                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-slate-100 border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-slate-100 border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors dark:bg-slate-700 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-600"
                   title="Close results"
                 >
                   ×
                 </button>
-                {submitState === "loading" && <p className="text-sm text-gray-600">Running tests...</p>}
+                {submitState === "loading" && <p className="text-sm text-gray-600 dark:text-slate-300">Running tests...</p>}
                 {submitState === "results" && (
                   <>
                     {(() => {
-                      const times = testResults.map((t) => Number(t.time.split(" ")[0]) || 0);
-                      const avg = times.length > 0 ? (times.reduce((a, b) => a + b, 0) / times.length).toFixed(3) : "0.000";
-                      const max = times.length > 0 ? Math.max(...times).toFixed(3) : "0.000";
+                      const durations = testResults.map((t) => Number(t.durationSeconds) || 0);
+                      const avgSeconds =
+                        durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+                      const maxSeconds = durations.length > 0 ? Math.max(...durations) : 0;
                       const passed = testResults.filter((t) => t.passed && !t.hidden).length;
                       return (
                         <>
                           <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                              <p className="text-slate-500 text-xs font-semibold uppercase">Average time</p>
-                              <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{avg} s</p>
-                              <p className="text-[11px] text-slate-500">{(avg * 1000).toFixed(0)} ms</p>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+                              <p className="text-slate-500 text-xs font-semibold uppercase dark:text-slate-400">Average time</p>
+                              <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{avgSeconds.toFixed(3)} s</p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">{formatDurationMs(avgSeconds)}</p>
                             </div>
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                              <p className="text-slate-500 text-xs font-semibold uppercase">Maximum time</p>
-                              <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{max} s</p>
-                              <p className="text-[11px] text-slate-500">{(max * 1000).toFixed(0)} ms</p>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+                              <p className="text-slate-500 text-xs font-semibold uppercase dark:text-slate-400">Maximum time</p>
+                              <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{maxSeconds.toFixed(3)} s</p>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">{formatDurationMs(maxSeconds)}</p>
                             </div>
                           </div>
                           <div className="grid grid-cols-1 gap-2 mb-4">
@@ -1015,47 +1304,57 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
                             )}
                           </div>
                           <div className="space-y-3">
-                            {testResults.map((tc) => (
-                              <div key={tc.id} className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700">
-                                <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50">
+                            {testResults.map((tc, index) => (
+                              <div key={`${tc.id}-${index}`} className="rounded-xl border border-slate-200 overflow-hidden bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700">
+                                <div className="flex items-center justify-between px-4 py-3 border-b bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60">
                                   <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm dark:text-slate-100">
-                                    <CheckCircle2 size={16} className="text-emerald-500" />
-                                    Test case {tc.id}
-                                    <span className="px-2 py-0.5 text-[11px] bg-emerald-100 text-emerald-700 rounded-full">
-                                      {tc.time}
+                                    {tc.passed ? (
+                                      <CheckCircle2 size={16} className="text-emerald-500" />
+                                    ) : (
+                                      <XCircle size={16} className="text-rose-500" />
+                                    )}
+                                    Test case {index + 1}
+                                    <span
+                                      className={`px-2 py-0.5 text-[11px] rounded-full ${
+                                        tc.passed
+                                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                                          : "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+                                      }`}
+                                    >
+                                      {tc.timeLabel || formatDurationMs(tc.durationSeconds)}
                                     </span>
                                   </div>
-                                  <div className="flex items-center gap-2 text-slate-500">
-                                    <button className="px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-[11px] font-semibold flex items-center gap-1">
-                                      <Bug size={12} /> Debug
-                                    </button>
-                                    <button className="px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-[11px] font-semibold flex items-center gap-1">
-                                      <List size={12} /> View
-                                    </button>
-                                  </div>
                                 </div>
-                                <div className="grid grid-cols-2 text-xs text-slate-600 px-4 py-3 gap-4">
+                                <div className="grid grid-cols-2 text-xs text-slate-600 px-4 py-3 gap-4 dark:text-slate-300">
                                   <div>
-                                    <p className="font-bold mb-2 text-slate-700">Expected output</p>
+                                    <p className="font-bold mb-2 text-slate-700 dark:text-slate-200">Expected output</p>
                                     <div className="space-y-1">
-                                      {tc.expectedOutput.split("\n").map((line, idx) => (
+                                      {(tc.expectedOutput || "").split("\n").map((line, idx) => (
                                         <div key={idx} className="inline-flex items-center gap-1 flex-wrap">
-                                          <span className="px-2 py-1 bg-slate-100 rounded-full">{line}</span>
+                                          <span className="px-2 py-1 bg-slate-100 rounded-full dark:bg-slate-700 dark:text-slate-200">{line}</span>
                                         </div>
                                       ))}
                                     </div>
                                   </div>
                                   <div>
-                                    <p className="font-bold mb-2 text-slate-700">Actual output</p>
+                                    <p className="font-bold mb-2 text-slate-700 dark:text-slate-200">Actual output</p>
                                     <div className="space-y-1">
-                                      {tc.actualOutput.split("\n").map((line, idx) => (
+                                      {(tc.actualOutput || "").split("\n").map((line, idx) => (
                                         <div key={idx} className="inline-flex items-center gap-1 flex-wrap">
-                                          <span className="px-2 py-1 bg-slate-100 rounded-full">{line}</span>
+                                          <span className="px-2 py-1 bg-slate-100 rounded-full dark:bg-slate-700 dark:text-slate-200">{line}</span>
                                         </div>
                                       ))}
                                     </div>
                                   </div>
                                 </div>
+                                {tc.error && (
+                                  <div className="px-4 pb-3">
+                                    <p className="font-bold mb-1 text-[11px] uppercase text-rose-600">Error</p>
+                                    <pre className="whitespace-pre-wrap rounded-lg bg-rose-50 p-2 text-[11px] leading-5 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300">
+                                      {tc.error}
+                                    </pre>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1071,10 +1370,36 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
       </div>
 
       <div className="h-10 bg-[#0f172a] border-t border-slate-800 flex items-center justify-end px-6 gap-2 shrink-0">
-        <button className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-all active:scale-95">
+        <button
+          onClick={() => {
+            const currentIndex = sidebarQuestions.findIndex(q => q.id === activeQuestion);
+            if (currentIndex > 0) {
+              const prevQ = sidebarQuestions[currentIndex - 1];
+              setActiveQuestion(prevQ.id);
+              setTimerSeconds(0);
+              setTimerRunning(false);
+              setSubmitState("idle");
+              setTestResults([]);
+              setIsSubmitted(false);
+              setTerminalOutput("");
+              setIsEditing(false);
+            }
+          }}
+          disabled={sidebarQuestions.findIndex(q => q.id === activeQuestion) === 0}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
+        >
           &lt; Prev
         </button>
-        <button className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold transition-all active:scale-95">
+        <button
+          onClick={() => {
+            setCode(language === "Java" ? defaultCodeJava : defaultCodeCpp);
+            setTerminalOutput("");
+            setSubmitState("idle");
+            setTestResults([]);
+            setIsSubmitted(false);
+          }}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-orange-500 hover:bg-orange-400 text-white text-xs font-bold transition-all active:scale-95"
+        >
           Reset
         </button>
         <button
@@ -1084,7 +1409,24 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
         >
           Submit
         </button>
-        <button className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all active:scale-95">
+        <button
+          onClick={() => {
+            const currentIndex = sidebarQuestions.findIndex(q => q.id === activeQuestion);
+            if (currentIndex < sidebarQuestions.length - 1) {
+              const nextQ = sidebarQuestions[currentIndex + 1];
+              setActiveQuestion(nextQ.id);
+              setTimerSeconds(0);
+              setTimerRunning(false);
+              setSubmitState("idle");
+              setTestResults([]);
+              setIsSubmitted(false);
+              setTerminalOutput("");
+              setIsEditing(false);
+            }
+          }}
+          disabled={sidebarQuestions.findIndex(q => q.id === activeQuestion) === sidebarQuestions.length - 1}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-40"
+        >
           Next &gt;
         </button>
       </div>

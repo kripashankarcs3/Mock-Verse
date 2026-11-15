@@ -291,3 +291,18 @@ textarea {
     radial-gradient(1100px at 50% 90%, rgba(16, 185, 129, 0.12), transparent 55%),
     linear-gradient(135deg, #f5f7fb 0%, #eef3fb 35%, #f6fbff 100%);
 }
+
+html.dark .bg-login-hero {
+  background:
+    radial-gradient(900px at 20% 20%, rgba(99, 102, 241, 0.22), transparent 50%),
+    radial-gradient(700px at 80% 10%, rgba(14, 165, 233, 0.18), transparent 45%),
+    radial-gradient(1100px at 50% 90%, rgba(16, 185, 129, 0.14), transparent 55%),
+    linear-gradient(135deg, #0b1220 0%, #0f172a 45%, #111827 100%);
+}
+
+html.dark .login-logo-text {
+  color: #e2e8f0;
+  text-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.7),
+    0 0 18px rgba(148, 197, 255, 0.18);
+}

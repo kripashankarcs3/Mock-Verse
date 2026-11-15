@@ -1,36 +1,57 @@
 const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
+const { protect } = require("../middleware/auth");
+const { asyncHandler } = require("../utils/asyncHandler");
 
-// POST /api/users — Create or update user on login
-router.post("/", async (req, res) => {
-  const { firebaseUID, name, email } = req.body;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  if (!firebaseUID || !email) {
-    return res.status(400).json({ error: "firebaseUID and email are required" });
-  }
+// POST /api/users — create or update the authenticated user's profile
+router.post(
+  "/",
+  protect,
+  asyncHandler(async (req, res) => {
+    const { name, email } = req.body;
+    const firebaseUID = req.user.uid;
 
-  try {
+    if (!email || typeof email !== "string" || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "A valid email is required" });
+    }
+
+    const existing = await User.findOne({ firebaseUID });
     const user = await User.findOneAndUpdate(
       { firebaseUID },
-      { name: name || "", email },
-      { upsert: true, new: true, runValidators: true }
+      { name: typeof name === "string" ? name.slice(0, 120) : "", email },
+      { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true }
     );
-    return res.status(200).json(user);
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
 
-// GET /api/users/:firebaseUID — Get user by Firebase UID
-router.get("/:firebaseUID", async (req, res) => {
-  try {
-    const user = await User.findOne({ firebaseUID: req.params.firebaseUID });
+    return res.status(existing ? 200 : 201).json(user);
+  })
+);
+
+// GET /api/users/me — current user's profile
+router.get(
+  "/me",
+  protect,
+  asyncHandler(async (req, res) => {
+    const user = await User.findOne({ firebaseUID: req.user.uid }).select("name email createdAt");
     if (!user) return res.status(404).json({ error: "User not found" });
     return res.json(user);
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
+  })
+);
+
+// GET /api/users/:firebaseUID — self only (kept for backward compatibility)
+router.get(
+  "/:firebaseUID",
+  protect,
+  asyncHandler(async (req, res) => {
+    if (req.params.firebaseUID !== req.user.uid) {
+      return res.status(403).json({ error: "You can only view your own profile" });
+    }
+    const user = await User.findOne({ firebaseUID: req.user.uid }).select("name email createdAt");
+    if (!user) return res.status(404).json({ error: "User not found" });
+    return res.json(user);
+  })
+);
 
 module.exports = router;
