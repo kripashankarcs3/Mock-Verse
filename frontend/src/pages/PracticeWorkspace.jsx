@@ -587,7 +587,7 @@ export default function PracticeWorkspace({ onBack, darkMode }) {
 
   return (
     <div
-      className={`flex flex-col h-[calc(100vh-64px)] bg-gray-100 text-slate-900 dark:bg-black dark:text-slate-100 overflow-hidden relative ${isDragging ? "select-none cursor-col-resize" : ""
+      className={`flex flex-col h-[calc(100vh-56px)] bg-gray-100 text-slate-900 dark:bg-black dark:text-slate-100 overflow-hidden relative ${isDragging ? "select-none cursor-col-resize" : ""
         }`}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}

@@ -4,31 +4,7 @@ import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPass
 import { auth, googleProvider } from "../services/firebase";
 import { useAuth } from "../context/AuthContext";
 import { createOrUpdateUser } from "../services/api";
-function BrandLogo({ compact = false, animate = false }) {
-  const fullText = "Mock-verse";
-
-  return (
-    <div className={`w-full flex justify-center`}>
-      <div className={`login-logo-card ${compact ? "py-3 px-5" : "py-4 px-6"}`}>
-        <div className="flex flex-col items-center gap-1">
-          <span className={`${compact ? "text-[2.6rem]" : "text-[3.6rem]"} mockverse-text login-logo-text`}>
-            <span className="inline-block min-w-[12ch] text-center">
-              {fullText.split("").map((char, idx) => (
-                <span
-                  key={idx}
-                  className="hello-letter"
-                  style={{ "--delay": animate ? `${idx * 140}ms` : "0ms" }}
-                >
-                  {char}
-                </span>
-              ))}
-            </span>
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
+import Logo from "../components/Logo";
 
 export default function Login() {
   const { currentUser } = useAuth();
@@ -169,7 +145,7 @@ export default function Login() {
       <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-md px-6 py-6 shadow-[0_18px_45px_rgba(15,23,42,0.12)] dark:border-slate-700 dark:bg-slate-900/90 dark:shadow-none">
         <div className="mx-auto max-w-[340px]">
           <div className="flex items-center justify-center">
-            <BrandLogo animate={true} />
+            <Logo size="lg" tagline />
           </div>
 
           <div className="mt-3 text-center">
@@ -177,7 +153,7 @@ export default function Login() {
               {isSignup ? "Sign up" : "Welcome Back, Coder!"}
             </h1>
             <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-              {isSignup ? "Already have an account?" : "Happy to see you back at Mock-Verse."}
+              {isSignup ? "Already have an account?" : "Happy to see you back at MockVerse."}
               {" "}
               <button
                 type="button"

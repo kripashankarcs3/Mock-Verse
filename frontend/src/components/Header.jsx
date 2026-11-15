@@ -94,7 +94,7 @@ export default function Header({
       .toUpperCase() || "?";
 
   return (
-    <header className="fixed inset-x-0 top-0 z-[100] h-16 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl dark:border-slate-800/80 dark:bg-[#0f172a]/85">
+    <header className="fixed inset-x-0 top-0 z-[100] h-14 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl dark:border-slate-800/80 dark:bg-[#0f172a]/85">
       <div className="mx-auto flex h-full max-w-[1600px] items-center justify-between gap-4 px-4 sm:px-6">
         {/* Brand */}
         <Logo tagline onClick={() => goTo("dashboard")} />
