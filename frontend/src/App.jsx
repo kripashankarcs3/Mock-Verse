@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Moon, Sun, User, Edit3, Mail, Settings as SettingsIcon, LogOut, MapPin, Calendar, BookOpen, Fingerprint } from "lucide-react";
-import { auth } from "./services/firebase";
-import { signOut } from "firebase/auth";
+import React, { useState, useEffect } from "react";
+import { User, Edit3, Mail, Settings as SettingsIcon, MapPin, Calendar, BookOpen, Fingerprint } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import PracticeWorkspace from "./pages/PracticeWorkspace";
 import Login from "./pages/Login";
+import Header from "./components/Header";
 import { useAuth } from "./context/AuthContext";
 
 const DARK_STORAGE_KEY = "mockverse-dark";
@@ -75,7 +74,7 @@ export default function App() {
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editForm, setEditForm] = useState(profile);
-  const dropdownRef = useRef(null);
+
 
   useEffect(() => {
     localStorage.setItem(DARK_STORAGE_KEY, darkMode);
@@ -97,38 +96,11 @@ export default function App() {
   }, [isProfilePanelOpen]);
 
   useEffect(() => {
-    function handleClickOutside(e) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setIsProfileOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     if (isProfilePanelOpen) {
       setIsEditingProfile(false);
       setEditForm(profile);
     }
   }, [isProfilePanelOpen, profile]);
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      // Never blanket-clear storage: it would wipe saved problems/code.
-      try {
-        sessionStorage.removeItem(VIEW_STORAGE_KEY);
-      } catch {
-        /* ignore */
-      }
-      setViewState("dashboard");
-      setIsProfileOpen(false);
-      setIsProfilePanelOpen(false);
-    } catch (error) {
-      console.error("Logout error", error);
-    }
-  };
 
   // Show a clear error instead of a blank screen when auth is misconfigured.
   if (authError) {
@@ -161,100 +133,19 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col font-sans transition-colors duration-300 bg-gray-50 text-slate-900 dark:bg-[#1A222C] dark:text-white">
-      <header className="fixed top-0 left-0 right-0 z-[100] flex flex-nowrap justify-between items-center px-6 h-[44px] border-b backdrop-blur-md bg-[linear-gradient(90deg,#34475a_0%,#25556d_38%,#1f6b83_68%,#f97316_88%,#fb7185_100%)] dark:bg-[linear-gradient(90deg,#0b1224_0%,#0f1f2f_38%,#12324a_68%,#1a3a52_88%,#1f4763_100%)] text-white shadow-md border-transparent">
-        <div className="flex flex-nowrap items-center gap-2 lg:gap-4 flex-shrink-0">
-          <div className="w-8 h-8 bg-gradient-to-br from-[#facc15] via-[#fb7185] to-[#6366f1] rounded-lg flex items-center justify-center shadow-[0_10px_24px_rgba(244,114,182,0.35)] flex-shrink-0">
-            <div className="w-4 h-5 bg-white rounded-sm transform -rotate-12"></div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setView("dashboard")}
-            className="text-lg lg:text-xl font-bold tracking-tight whitespace-nowrap flex-shrink-0 text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 rounded"
-          >
-            Mock-Verse
-          </button>
-        </div>
+      <Header
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        profile={profile}
+        view={view}
+        setView={setView}
+        isProfileOpen={isProfileOpen}
+        setIsProfileOpen={setIsProfileOpen}
+        setIsProfilePanelOpen={setIsProfilePanelOpen}
+      />
 
-        <div className="flex flex-nowrap items-center gap-2 lg:gap-4 flex-shrink-0">
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
-            className={`p-1.5 rounded-full transition-colors flex-shrink-0 text-white ${
-              darkMode ? "hover:bg-white/20 bg-white/10" : "hover:bg-[#fb7185]/20 bg-white/10"
-            }`}
-          >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-          </button>
-          <div className="relative" ref={dropdownRef}>
-            <button
-              onClick={() => setIsProfileOpen((prev) => !prev)}
-              className="w-9 h-9 rounded-full bg-gradient-to-tr from-slate-800 via-slate-900 to-black p-[2px] shadow-md cursor-pointer hover:scale-105 transition-transform flex-shrink-0"
-              aria-haspopup="menu"
-              aria-expanded={isProfileOpen}
-            >
-              <div className="w-full h-full rounded-full flex items-center justify-center overflow-hidden bg-slate-900 text-white">
-                {profile?.avatar ? (
-                  <img src={profile.avatar} alt="User" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-xs font-bold">{profile?.initials || "AJ"}</span>
-                )}
-              </div>
-            </button>
 
-            {isProfileOpen && (
-            <div
-              className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden z-[120] transition-all duration-200 ease-out origin-top-right opacity-100 scale-100"
-            >
-              <div className="py-2 px-2 flex flex-col gap-1">
-                <button
-                  className="flex items-center gap-3 w-full text-left px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-lg transition-colors group"
-                  onClick={() => {
-                    setIsProfilePanelOpen(true);
-                    setIsProfileOpen(false);
-                  }}
-                >
-                  <User className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
-                  My Profile
-                </button>
-
-                <button
-                  className="flex items-center gap-3 w-full text-left px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-lg transition-colors group"
-                  onClick={() => {
-                    setView("contact");
-                    setIsProfileOpen(false);
-                  }}
-                >
-                  <Mail className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
-                  Contact
-                </button>
-                <button
-                  className="flex items-center gap-3 w-full text-left px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-lg transition-colors group"
-                  onClick={() => {
-                    setView("settings");
-                    setIsProfileOpen(false);
-                  }}
-                >
-                  <SettingsIcon className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors" />
-                  Settings
-                </button>
-              </div>
-              <div className="border-t border-gray-100 p-2">
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-3 w-full text-left px-3 py-2.5 text-sm font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors group"
-                >
-                  <LogOut className="w-4 h-4 text-rose-500 group-hover:text-rose-600 transition-colors" />
-                  Logout
-                </button>
-              </div>
-            </div>
-            )}
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-auto mt-[44px]">
+      <div className="flex-1 overflow-auto mt-[64px]">
         {view === "dashboard" ? (
           <Dashboard darkMode={darkMode} onOpenPractice={() => setView("practice")} />
         ) : view === "practice" ? (
@@ -446,5 +337,6 @@ function StatCard({ label, value, accent }) {
     </div>
   );
 }
+
 
 
