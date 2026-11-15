@@ -145,7 +145,7 @@ export default function App() {
       />
 
 
-      <div className="flex-1 overflow-auto mt-[64px]">
+      <div className="flex-1 overflow-auto mt-[56px]">
         {view === "dashboard" ? (
           <Dashboard darkMode={darkMode} onOpenPractice={() => setView("practice")} />
         ) : view === "practice" ? (
@@ -175,7 +175,7 @@ export default function App() {
 
       {view === "dashboard" && (
         <footer className="py-2 px-4 text-white text-[10px] font-semibold tracking-wider uppercase border-t border-slate-800 bg-[#0c1424] shadow-inner flex-shrink-0 flex items-center justify-center">
-          (c) {new Date().getFullYear()} Mock-Verse. All rights reserved.
+          &copy; {new Date().getFullYear()} MockVerse. All rights reserved.
         </footer>
       )}
 
